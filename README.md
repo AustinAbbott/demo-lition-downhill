@@ -10,6 +10,8 @@ The gameplay is an homage to the classic Windows ski game. All the art, the code
 
 1. One person clicks **Create a room** and shares the link (`…/?room=KXBT`). Joining only works with the code of a room that already exists. A typo gets a "no room with that code" message instead of putting you in an empty room. An empty room stays joinable for 30 minutes, so the host can refresh without losing it.
 2. Everyone joins. The lobby is a warm-up run, so people can ski around while waiting. Press <kbd>R</kbd> to go back to the top.
+
+   **Big-screen view:** whoever created the room is usually the one sharing their screen on the call. Their camera zooms out to show the whole pack whenever they aren't skiing: in the lobby, after they're eaten, and on the results screen. In the lobby it also shows the join address and room code in large text. When the field gets too spread out to fit, it follows the yeti and whoever is closest to it. They still ski normally once the round starts.
 3. The host can **add bots**. Type the name of someone who's out, and a bot skis in their place and gets a fair slot.
 4. The host clicks **Start the round**. After a 3-2-1 countdown, everyone is off.
 5. The Scope Creep arrives 14 seconds in. It's erratic: it weaves as it chases, and every few seconds it switches to a different mood. A speech bubble shows which mood it's in:

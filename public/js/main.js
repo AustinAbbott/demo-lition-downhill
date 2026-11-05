@@ -314,12 +314,13 @@ function viewState(now) {
 
 // ---------------------------------------------------------------------------
 // rendering
-let Z = 2, VW = 400, VH = 280;
+let Z = 2, VW = 400, VH = 280, BASE_Z = 2;
 function resize() {
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
   Z = Math.max(1, Math.round((cv.height / 560) * 2) / 2);
   if (cv.width / Z < 420) Z = Math.max(1, Math.round((cv.width / 420) * 2) / 2); // narrow phones
+  BASE_Z = Z;
   VW = cv.width / Z; VH = cv.height / Z;
 }
 addEventListener('resize', resize);
@@ -375,7 +376,64 @@ function trackTrail(id, x, y, air) {
   if (!l || Math.hypot(x - l[0], y - l[1]) > 5) { t.push([x, y, air]); if (t.length > 90) t.shift(); }
 }
 
+// Big-screen view for the room's host (whoever created it), who is usually
+// the one sharing their screen on the call: whenever they aren't skiing
+// (lobby, after being eaten, results) the camera zooms out to show the pack.
+function overviewActive() {
+  if (!G.conn || G.hostId !== G.you || !G.view) return false;
+  if (G.phase === 'lobby' || G.phase === 'over') return true;
+  return G.phase === 'run' && !!G.me && (G.me.st === 'eaten' || G.me.st === 'wait');
+}
+
+function setZoom(z) { Z = z; VW = cv.width / Z; VH = cv.height / Z; }
+
+function overviewCamera(k) {
+  const pts = [];
+  for (const p of G.view.players) {
+    if (p.st === 'wait' || (G.phase !== 'lobby' && p.st === 'eaten')) continue;
+    pts.push(p.id === G.you && G.me ? [G.me.x, G.me.y] : [p.x, p.y]);
+  }
+  const mon = G.view.monster;
+  if (mon) pts.push([mon.x, mon.y]);
+  if (!pts.length) return false;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const pad = 150, minZ = BASE_Z * 0.45;
+  const box = (ps) => {
+    let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
+    for (const [x, y] of ps) { a = Math.min(a, x); b = Math.max(b, x); c = Math.min(c, y); d = Math.max(d, y); }
+    return { x0: a, x1: b, y0: c, y1: d, fit: Math.min(cv.width / (b - a + pad * 2), cv.height / (d - c + pad * 2)) };
+  };
+  // Everyone, if they fit. Otherwise start from whoever is furthest back (next on
+  // the menu), add the yeti if it fits alongside them, then add skiers in order
+  // up the pack for as long as they still fit. If the yeti doesn't fit, an arrow
+  // at the top of the screen points to it.
+  let bb = box(pts);
+  if (bb.fit < minZ) {
+    const skiers = pts.slice(0, mon ? -1 : undefined).sort((a, b) => a[1] - b[1]);
+    const sel = skiers.length ? [skiers[0]] : [[mon.x, mon.y]];
+    if (mon && skiers.length && box([...sel, [mon.x, mon.y]]).fit >= minZ) sel.push([mon.x, mon.y]);
+    for (let i = 1; i < skiers.length; i++) {
+      if (box([...sel, skiers[i]]).fit < minZ) break;
+      sel.push(skiers[i]);
+    }
+    bb = box(sel);
+  }
+  const tz = Math.max(minZ, Math.min(BASE_Z, bb.fit));
+  setZoom(Z + (tz - Z) * Math.min(1, k * 0.6));
+  const cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+  let tx = cx - VW / 2;
+  if (VW >= WORLD_W + 160) tx = (WORLD_W - VW) / 2;
+  else tx = Math.max(-80, Math.min(WORLD_W - VW + 80, tx));
+  G.camX += (tx - G.camX) * k;
+  G.camY += (cy - VH / 2 - G.camY) * k;
+  return true;
+}
+
 function updateCamera(dt) {
+  const kk = 1 - Math.pow(0.0005, dt);
+  if (overviewActive() && overviewCamera(kk)) return;
+  if (Z !== BASE_Z) setZoom(Math.abs(Z - BASE_Z) < 0.01 ? BASE_Z : Z + (BASE_Z - Z) * Math.min(1, kk * 1.5));
   let fx = WORLD_W / 2, fy = G.camY + VH * 0.32 + 40 * dt, follow = 'drift';
   const me = G.me;
   if (G.conn && me && me.st !== 'eaten' && me.st !== 'wait') { fx = me.x; fy = me.y; follow = 'me'; }
@@ -588,17 +646,25 @@ function bigText(text, cy, maxScale, color, outline) {
 
 function drawOverlay(now) {
   if (!G.conn) return;
-  const ts = Math.max(1, Math.round(Z));
+  const ts = Math.max(1, Math.round(BASE_Z)); // HUD text stays the same size when the big-screen view zooms out
   const cy = cv.height * 0.56;
 
+  let noticeY = null;
+  if (G.phase === 'lobby' && G.hostId === G.you && !G.practice && innerWidth > 700) {
+    const dpr = cv.width / innerWidth;
+    let y = 14 * dpr;
+    y += bigText(`JOIN AT ${location.host}`, y, 2 * ts, '#000080', '#ffffff') + 8 * dpr;
+    y += bigText(`ROOM CODE ${G.code}`, y, 5 * ts, '#e63946', '#ffffff') + 10 * dpr;
+    noticeY = y;
+  }
   if (G.phase === 'lobby') {
     const msg = G.hostId === G.you
       ? 'WARM-UP: NO MONSTER UNTIL YOU HIT START'
       : 'WARM-UP: NO MONSTER UNTIL THE HOST STARTS';
     // top of the screen on desktop (lobby window is bottom-left); above the touch buttons on phones
     const dpr = cv.width / innerWidth;
-    const y = innerWidth <= 700 ? cv.height - 140 * dpr : 16 * dpr;
-    bigText(msg, y, ts * 2, '#5a4fcf', '#ffffff');
+    const y = innerWidth <= 700 ? cv.height - 140 * dpr : (noticeY ?? 16 * dpr);
+    bigText(msg, y, noticeY ? ts : ts * 2, '#5a4fcf', '#ffffff');
   }
 
   if (G.phase === 'count') {
@@ -619,7 +685,7 @@ function drawOverlay(now) {
   }
 
   const me = G.me;
-  if (me && me.st === 'eaten' && G.phase === 'run') {
+  if (me && me.st === 'eaten' && G.phase === 'run' && !overviewActive()) {
     bigText(G.eatenSlot ? `YOU DEMO #${G.eatenSlot}` : 'YOU GOT EATEN', bottomY() - 90 * ts, 3 * ts, '#ffffff', '#5a4fcf');
     bigText('SPECTATING THE SCOPE CREEP', bottomY() - 60 * ts, ts, '#1d1b2f', '#ffffff');
   } else if (me && me.st === 'wait' && G.phase === 'run') {
@@ -628,10 +694,14 @@ function drawOverlay(now) {
 
   // monster off-screen indicator
   const m = G.view && G.view.monster;
-  if (m && me && me.st !== 'eaten' && me.st !== 'wait') {
+  const alive = me && me.st !== 'eaten' && me.st !== 'wait';
+  if (m && (alive || overviewActive())) {
     const off = sy(m.y) < 0 || sx(m.x) < 0 || sx(m.x) > cv.width;
-    if (off) {
-      const dist = Math.max(0, Math.round((me.y - m.y) / PX_PER_M));
+    // distance from you, or (big-screen view) from whoever is furthest back
+    let refY = alive ? me.y : null;
+    if (!alive) for (const p of G.view.players) if (p.st !== 'eaten' && p.st !== 'wait' && (refY === null || p.y < refY)) refY = p.y;
+    if (off && refY !== null) {
+      const dist = Math.max(0, Math.round((refY - m.y) / PX_PER_M));
       const pad = (innerWidth > 700 ? 260 : 190) * (cv.width / innerWidth);
       const x = Math.max(pad, Math.min(cv.width - pad, sx(m.x)));
       const danger = dist < 25 && Math.floor(now / 200) % 2 === 0;
@@ -639,7 +709,7 @@ function drawOverlay(now) {
       g.beginPath(); g.moveTo(x, 6 * ts); g.lineTo(x - 8 * ts, 18 * ts); g.lineTo(x + 8 * ts, 18 * ts); g.closePath(); g.fill();
       const label = `SCOPE CREEP ${dist}M`;
       const w = S.textWidth(label, ts);
-      S.drawText(g, label, Math.round(Math.max(4, Math.min(cv.width - w - 4, x - w / 2))), 22 * ts, ts, g.fillStyle, '#ffffff');
+      S.drawText(g, label, Math.round(Math.max(pad - 8 * ts, Math.min(cv.width - pad - w + 8 * ts, x - w / 2))), 22 * ts, ts, g.fillStyle, '#ffffff');
     }
   }
 
@@ -651,7 +721,7 @@ function drawOverlay(now) {
     const big = 3 * ts, small = ts;
     const x = 14 * dpr;
     const y = innerWidth <= 700 ? cv.height * 0.42 : cv.height - 14 * dpr - 7 * big - 10 * small;
-    const label = me.st === 'eaten' ? 'YOU MADE IT' : 'DISTANCE';
+    const label = me.st === 'eaten' ? (G.eatenSlot ? `YOU DEMO #${G.eatenSlot} - MADE IT` : 'YOU MADE IT') : 'DISTANCE';
     S.drawText(g, label, x, y, small, '#1d1b2f', '#ffffff');
     S.drawText(g, `${metres(me.y)}M`, x, y + 10 * small, big, me.st === 'eaten' ? '#5a4fcf' : '#000080', '#ffffff');
   }
