@@ -13,7 +13,7 @@ The gameplay is an homage to the classic Windows ski game. All the art, the mons
 3. The host can **add bots**. Type the name of someone who's out, and a bot skis in their place and gets a fair slot.
 4. The host clicks **Start the round**. After a 3-2-1 countdown, everyone is off.
 5. The Scope Creep arrives 14 seconds in. It starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
-6. When the round ends, the results window shows the full order, and **Copy for Slack** puts it on your clipboard.
+6. When the round ends, the results window shows the full order. **Copy demo order** puts it on your clipboard, ready to paste into Slack.
 
 Anyone who joins mid-round "missed the lift" and **demos first**.
 
@@ -29,7 +29,11 @@ Anyone who joins mid-round "missed the lift" and **demos first**.
 
 Phones get on-screen buttons.
 
-The soundtrack is two original chiptune loops synthesized in the browser, so there are no audio files. An easygoing loop plays in the lobby, and a faster minor-key chase loop starts the moment the Scope Creep shows up.
+The soundtrack is three original chiptune loops synthesized in the browser, so there are no audio files. The music builds as the round goes:
+
+- **Lobby:** an easygoing loop.
+- **Race:** a faster, driving track that kicks in at the countdown.
+- **Chase:** a minor-key loop that starts the moment the Scope Creep shows up. It gets a little faster with every skier eaten.
 
 What's on the mountain:
 - Trees, rocks and stumps knock you down for about a second.
@@ -103,7 +107,7 @@ public/
   js/room.js                  RoomLogic: lobby, phases, bots, the monster, eat order (platform-agnostic)
   js/sprites.js               all pixel art + a 5×7 pixel font, drawn in code
   js/audio.js                 synthesized sound effects
-  js/music.js                 chiptune soundtrack (two loops, sequenced live)
+  js/music.js                 chiptune soundtrack (three loops that escalate, sequenced live)
   js/main.js                  input, netcode, rendering, HUD
 src/worker.js                 Cloudflare Worker + Durable Object wrapper around RoomLogic
 dev/server.mjs                zero-dependency local server (same RoomLogic)

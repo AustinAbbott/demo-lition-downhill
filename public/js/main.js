@@ -803,10 +803,12 @@ function toggleMusic() { setMusicOn(!isMusicOn()); syncMusic(); }
 musicBtn.onclick = () => { unlock(); toggleMusic(); musicBtn.blur(); };
 syncMusic();
 document.addEventListener('visibilitychange', () => { if (document.hidden) setTrack(null); });
-// cruise in the lobby and on the results screen; chase once the monster is loose
+// cruise in the lobby and on the results screen, race from the countdown,
+// chase once the monster is loose (and faster with every skier it eats)
 function musicFor() {
   if (!G.conn || G.phase === 'none') return null;
   if (G.phase === 'run' && G.view && G.view.monster) return 'chase';
+  if (G.phase === 'count' || G.phase === 'run') return 'race';
   return 'cruise';
 }
 $('#copy-order').onclick = async () => {
@@ -835,7 +837,7 @@ function frame(now) {
     sendPosition(now);
     renderPanels(false);
   }
-  setTrack(musicFor());
+  setTrack(musicFor(), (G.order || []).length);
   render(now, dt);
   requestAnimationFrame(frame);
 }
