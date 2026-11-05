@@ -96,10 +96,12 @@ kbd { font: 11px var(--font); background: var(--face); border: 1px solid; border
 .x { border: 0; background: none; cursor: pointer; font: bold 12px var(--font); color: #800; padding: 0 4px; }
 #abort { margin: 6px; }
 .share .room-code { font-size: 13px; }
-.look { margin-top: 8px; gap: 10px; }
-.look label { display: flex; align-items: center; gap: 4px; font-size: 12px; flex: 1; }
-select { font: inherit; font-size: 12px; padding: 2px 4px; background: #fff; color: var(--ink); flex: 1; min-width: 0;
-  border: 2px solid; border-color: var(--lo) var(--hi) var(--hi) var(--lo); box-shadow: inset 1px 1px 0 var(--dk); }
+.picker { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.picker button { padding: 1px 3px; background: #f7fbff; cursor: pointer; border: 2px solid; border-color: var(--hi) var(--dk) var(--dk) var(--hi); }
+.picker button[aria-pressed="true"] { outline: 2px solid #000; outline-offset: 1px; border-color: var(--dk) var(--hi) var(--hi) var(--dk); background: #fffbd6; }
+.picker canvas { display: block; width: 28px; height: 30px; image-rendering: pixelated; }
+.colors button.none { background: #fff; font: bold 13px var(--font); color: #800; line-height: 1; }
+.colors button.stripe { background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(255,255,255,.85) 4px 7px); }
 .share .room-code b { font-size: 20px; letter-spacing: .2em; font-family: "Courier New", monospace; }
 #share-link { font-size: 11px; }
 
@@ -122,6 +124,10 @@ select { font: inherit; font-size: 12px; padding: 2px 4px; background: #fff; col
 .final .dist { margin-left: auto; color: #444; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 700px) {
+  .colors, .picker { gap: 4px; }
+  .colors button { width: 22px; height: 22px; }
+  .picker button { padding: 1px; }
+  .picker canvas { width: 26px; height: 28px; }
   .panel { width: 170px; }
   #lobby-panel { width: calc(100vw - 20px); top: 10px; bottom: auto; }
   #lobby-panel .list { max-height: 16vh; }

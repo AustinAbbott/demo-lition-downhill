@@ -1059,7 +1059,7 @@ function drawLogo() {
   S.drawText(lg, 'DOWNHILL', 8, 28, 2, '#000080');
   lg.fillStyle = '#5a4fcf';
   S.drawText(lg, 'WHO DEMOS FIRST?', 8, 50, 1, '#555');
-  const sk = S.skier(1, myColor);
+  const sk = S.skier(1, myColor, myHat, myScarf);
   lg.drawImage(sk, 164, 18, sk.width * 2, sk.height * 2);
   const t = S.obstacle('tree', 2);
   lg.drawImage(t, 144, 2, t.width, t.height);
@@ -1085,7 +1085,45 @@ function initLanding() {
     };
     colors.append(b);
   }
-  drawLogo();
+  // hats: each button shows your skier wearing it (redrawn when jacket/scarf change)
+  const HAT_NAMES = { beanie: 'Beanie (classic)', cowboy: 'Cowboy hat', tophat: 'Top hat', crown: 'Crown', party: 'Party hat', viking: 'Viking helmet', propeller: 'Propeller cap', chef: "Chef's hat" };
+  const SCARF_NAMES = { none: 'No scarf', red: 'Candy cane scarf', gold: 'Gold scarf', mint: 'Mint scarf', navy: 'Navy scarf' };
+  const SCARF_SWATCH = { red: '#e63946', gold: '#ffb703', mint: '#2ec4b6', navy: '#1d3557' };
+  const hats = $('#hats'), scarves = $('#scarves');
+  const paintHats = () => {
+    for (const b of hats.children) {
+      const cv2 = b.firstChild, g2 = cv2.getContext('2d');
+      g2.imageSmoothingEnabled = false; g2.clearRect(0, 0, cv2.width, cv2.height);
+      g2.drawImage(S.skier(0, myColor, b.dataset.hat, myScarf), 0, 0); // just the top: hat, head, shoulders
+    }
+  };
+  const repaint = () => { drawLogo(); paintHats(); };
+  for (const h of HATS) {
+    const b = document.createElement('button');
+    b.dataset.hat = h; b.title = HAT_NAMES[h]; b.setAttribute('aria-label', HAT_NAMES[h]); b.setAttribute('aria-pressed', String(h === myHat));
+    const cv2 = document.createElement('canvas'); cv2.width = 14; cv2.height = 15; b.append(cv2);
+    b.onclick = () => {
+      myHat = h; ls.set('dd.hat', h);
+      for (const o of hats.children) o.setAttribute('aria-pressed', String(o === b));
+      repaint();
+    };
+    hats.append(b);
+  }
+  for (const sc of SCARVES) {
+    const b = document.createElement('button');
+    b.title = SCARF_NAMES[sc]; b.setAttribute('aria-label', SCARF_NAMES[sc]); b.setAttribute('aria-pressed', String(sc === myScarf));
+    if (sc === 'none') { b.className = 'none'; b.textContent = '✕'; }
+    else { b.className = 'stripe'; b.style.backgroundColor = SCARF_SWATCH[sc]; }
+    b.onclick = () => {
+      myScarf = sc; ls.set('dd.scarf', sc);
+      for (const o of scarves.children) o.setAttribute('aria-pressed', String(o === b));
+      repaint();
+    };
+    scarves.append(b);
+  }
+  // the jacket buttons should refresh the hat previews too
+  for (const b of colors.children) b.addEventListener('click', paintHats);
+  repaint();
   setInterval(() => { if (!$('#landing').hidden) drawLogo(); }, 120);
 
   const needName = () => {
@@ -1124,20 +1162,6 @@ $('#add-bot').onclick = () => {
 };
 $('#bot-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#add-bot').click(); });
 $('#start').onclick = () => { $('#start').blur(); G.conn.send({ t: 'start' }); };
-// cosmetics: picked in the lobby, remembered in this browser
-const HAT_NAMES = { beanie: 'Beanie (classic)', cowboy: 'Cowboy', tophat: 'Top hat', crown: 'Crown', party: 'Party hat', viking: 'Viking', propeller: 'Propeller cap', chef: 'Chef' };
-const SCARF_NAMES = { none: 'None', red: 'Candy cane', gold: 'Gold', mint: 'Mint', navy: 'Navy' };
-for (const [sel, list, names, cur] of [[$('#hat'), HATS, HAT_NAMES, myHat], [$('#scarf'), SCARVES, SCARF_NAMES, myScarf]]) {
-  for (const v of list) { const o = document.createElement('option'); o.value = v; o.textContent = names[v]; sel.append(o); }
-  sel.value = cur;
-}
-const sendLook = () => {
-  myHat = $('#hat').value; myScarf = $('#scarf').value;
-  ls.set('dd.hat', myHat); ls.set('dd.scarf', myScarf);
-  if (G.conn) G.conn.send({ t: 'look', hat: myHat, scarf: myScarf });
-  $('#hat').blur(); $('#scarf').blur();
-};
-$('#hat').onchange = sendLook; $('#scarf').onchange = sendLook;
 $('#abort').onclick = () => { if (confirm('Abort this round and go back to the lobby?')) G.conn.send({ t: 'abort' }); };
 $('#again').onclick = () => G.conn.send({ t: 'lobby' });
 $('#close-results').onclick = () => { $('#results').hidden = true; G.resultsDismissed = true; renderPanels(true); };

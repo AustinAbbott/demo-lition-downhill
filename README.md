@@ -57,7 +57,7 @@ The soundtrack is three original chiptune loops synthesized in the browser, so t
 
 **Emotes:** <kbd>1</kbd> SORRY!, <kbd>2</kbd> GG, <kbd>3</kbd> HI!, <kbd>4</kbd> YIKES! show in a speech bubble over your head. On phones, the 💬 button cycles through them.
 
-**Cosmetics:** pick a hat (cowboy, top hat, crown, party hat, viking, propeller cap, chef or the classic beanie) and a scarf in the lobby. Your choice is remembered, and bots dress themselves. Hats fly off when you crash.
+**Cosmetics:** on the start screen, next to your jacket colour, pick a hat (cowboy, top hat, crown, party hat, viking, propeller cap, chef or the classic beanie) and a scarf. The skier in the logo shows your look as you choose. Your choice is remembered, and bots dress themselves. Hats fly off when you crash.
 
 Bots grab pickups, drop invites on people right behind them, and say GG when they're eaten.
 
