@@ -225,7 +225,8 @@ export function obstacle(type, v) {
 
 // --- the Scope Creep --------------------------------------------------------------
 // A classic folklore yeti, drawn from scratch: big shaggy white fur, a
-// blue-grey face, hands and feet, a heavy brow, dark eyes and fangs.
+// blue-grey face, hands and feet, a heavy brow, dark eyes and fangs, and
+// covered in sticky notes (feature requests, obviously).
 // Redrawn every frame into a small buffer so it can lumber, swing its arms,
 // look around and chew.
 const CW = 64, CH = 70;
@@ -297,6 +298,24 @@ export function creep(t, look, mouth) {
       const inner = cx - dir * (4.6 - f * 1.5);
       px(inner, cy, '#8a99b2'); px(inner - dir, cy, i > 13 ? DEEP : SHADE);
     }
+  }
+  // sticky notes stuck all over its fur (it is the Scope Creep, after all)
+  const note = (nx, ny, col, i) => {
+    nx = Math.round(nx); ny = Math.round(ny);
+    rect(nx, ny, 6, 6, col);
+    rect(nx + 1, ny + 5, 5, 1, 'rgba(0,0,0,0.18)');          // shadow along the bottom
+    rect(nx + 1, ny + 2, 4, 1, 'rgba(0,0,0,0.35)');          // scribbled "requirement"
+    rect(nx + 1, ny + 4, 3, 1, 'rgba(0,0,0,0.35)');
+    if (Math.sin(t * 7 + i * 1.9) > 0.2) { px(nx + 5, ny, FUR); px(nx + 4, ny, 'rgba(0,0,0,0.25)'); } // corner flutters
+  };
+  note(19, 33, '#ffd60a', 0);
+  note(38, 39, '#ff8fab', 1);
+  note(26, 47, '#90e0ef', 2);
+  note(41, 27, '#ffd60a', 3);
+  note(20, 5 + (hy - 16), '#b9fbc0', 4);                      // one stuck to its head
+  {
+    const [sx, sy, hx, hyy] = armPaths[0];                      // one on the swinging left arm
+    note(sx + (hx - sx) * 0.55 - 3, sy + (hyy - sy) * 0.55 - 3, '#ff8fab', 5);
   }
   // big blue-grey feet
   for (const [lx, fy] of feet) {
