@@ -8,12 +8,13 @@ The gameplay is an homage to the classic Windows ski game. All the art, the mons
 
 ## How a round works
 
-1. One person clicks **Create a room** and shares the link (`…/?room=KXBT`).
+1. One person clicks **Create a room** and shares the link (`…/?room=KXBT`). Joining only works with the code of a room that already exists. A typo gets a "no room with that code" message instead of putting you in an empty room. An empty room stays joinable for 30 minutes, so the host can refresh without losing it.
 2. Everyone joins. The lobby is a warm-up run, so people can ski around while waiting. Press <kbd>R</kbd> to go back to the top.
 3. The host can **add bots**. Type the name of someone who's out, and a bot skis in their place and gets a fair slot.
 4. The host clicks **Start the round**. After a 3-2-1 countdown, everyone is off.
 5. The Scope Creep arrives 14 seconds in. It starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
-6. When the round ends, the results window shows the full order. **Copy demo order** puts it on your clipboard, ready to paste into Slack.
+   During the round, the **Distance down the hill** panel ranks everyone by how far they've gone. Eaten skiers stay on the list, crossed out, with where they were caught. Your own distance is shown big in the corner.
+6. When the round ends, the results window shows the full order with everyone's distance. **Copy demo order** puts it on your clipboard, ready to paste into Slack.
 
 Anyone who joins mid-round "missed the lift" and **demos first**.
 

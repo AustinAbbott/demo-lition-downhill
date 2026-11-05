@@ -35,7 +35,7 @@ server.on('upgrade', (req, socket) => {
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   const code = m[1].toUpperCase();
   let room = rooms.get(code);
-  if (!room) { room = new RoomLogic(code, { onEmpty: () => rooms.delete(code) }); rooms.set(code, room); }
+  if (!room) { room = new RoomLogic(code); rooms.set(code, room); } // kept around, like a Durable Object
   const ws = new MiniWS(socket);
   room.attach(ws);
   ws.onmessage = (d) => room.message(ws, d);

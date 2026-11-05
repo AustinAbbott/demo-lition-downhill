@@ -90,6 +90,8 @@ kbd { font: 11px var(--font); background: var(--face); border: 1px solid; border
 .list li .meta { color: #555; font-size: 11px; }
 .list li.me .nm { font-weight: bold; text-decoration: underline; }
 .list li.off .nm { color: #888; font-style: italic; }
+.list li.gone .nm { color: #777; text-decoration: line-through; }
+.list li.gone .meta { color: #777; }
 .swatch { width: 10px; height: 10px; flex: none; border: 1px solid #000; }
 .x { border: 0; background: none; cursor: pointer; font: bold 12px var(--font); color: #800; padding: 0 4px; }
 #abort { margin: 6px; }
@@ -113,6 +115,7 @@ kbd { font: 11px var(--font); background: var(--face); border: 1px solid; border
 .final li::before { counter-increment: n; content: counter(n) "."; font-weight: bold; width: 26px; text-align: right; }
 .final .tagpill { font-size: 11px; background: #ffffcc; border: 1px solid #b0a000; padding: 0 5px; color: #554; }
 .final .tagpill.win { background: #ccffcc; border-color: #2a8a2a; }
+.final .dist { margin-left: auto; color: #444; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 700px) {
   .panel { width: 170px; }

@@ -39,21 +39,32 @@ const G = {
 
 // ---------------------------------------------------------------------------
 // networking
-function connect(code) {
+function newCode() {
+  const L = 'BCDFGHJKLMNPQRSTVWXZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) code += L[Math.floor(Math.random() * L.length)];
+  return code;
+}
+
+// create = true claims a fresh room code; false joins one that must already exist
+function connect(code, create = false, attempt = 0) {
   G.code = code; G.practice = false;
+  G.creating = create ? { attempt } : null;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  let ws, retry = 0, stopped = false;
+  let ws, retry = 0, stopped = false, joined = false;
   const open = () => {
     ws = new WebSocket(`${proto}://${location.host}/api/room/${code}/ws`);
     ws.onopen = () => {
       retry = 0; $('#conn').hidden = true;
-      ws.send(JSON.stringify({ t: 'join', id: myId, name: myName, color: myColor }));
+      // only the very first join creates; reconnects rejoin the existing room
+      ws.send(JSON.stringify({ t: 'join', id: myId, name: myName, color: myColor, create: create && !joined }));
     };
+    ws.addEventListener('message', (e) => { if (!joined && e.data.includes('"t":"hello"')) joined = true; });
     ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
     ws.onclose = (e) => {
       if (stopped) return;
       if (e.code === 4000) { stopped = true; toast('This tab was replaced by another one.'); return; }
-      if (e.code === 4001) { stopped = true; return; }
+      if (e.code === 4001 || e.code === 4002) { stopped = true; return; }
       $('#conn').hidden = false; $('#conn').textContent = 'Reconnecting…';
       setTimeout(open, Math.min(5000, 400 * 2 ** retry++));
     };
@@ -71,7 +82,7 @@ function connectPractice() {
   room.attach(sock);
   G.conn = { send: (o) => room.message(sock, JSON.stringify(o)), close: () => room.detach(sock) };
   G.code = 'SOLO'; G.practice = true;
-  G.conn.send({ t: 'join', id: myId, name: myName, color: myColor });
+  G.conn.send({ t: 'join', id: myId, name: myName, color: myColor, create: true });
   for (let i = 0; i < 7; i++) G.conn.send({ t: 'bot' });
 }
 
@@ -86,7 +97,7 @@ function leave() {
 function handle(m) {
   switch (m.t) {
     case 'hello': {
-      G.you = m.you;
+      G.you = m.you; G.creating = null;
       if (m.you !== myId) { myId = m.you; try { sessionStorage.setItem('dd.id', myId); } catch {} }
       setSeed(m.seed);
       G.phase = m.phase; G.phaseStart = performance.now();
@@ -105,7 +116,20 @@ function handle(m) {
     case 'phase': onPhase(m); break;
     case 's': onState(m); break;
     case 'ev': onEvent(m); break;
-    case 'error': leave(); $('#landing-err').textContent = m.msg; break;
+    case 'error': {
+      const c = G.creating;
+      if (m.code === 'taken' && c && c.attempt < 5) {
+        // someone else is using that random code; quietly pick another
+        G.conn.close(); G.conn = null;
+        connect(newCode(), true, c.attempt + 1);
+        break;
+      }
+      const wasCode = G.code;
+      leave();
+      $('#landing-err').textContent = m.msg || 'Could not join that room.';
+      if (m.code === 'noroom') { $('#code').value = wasCode || ''; $('#code').select(); }
+      break;
+    }
     case 'kicked': leave(); $('#landing-err').textContent = 'The host removed you from that room.'; break;
   }
 }
@@ -522,6 +546,9 @@ function drawCreep(m, now) {
   g.drawImage(img, Math.round(sx(m.x) - w / 2), Math.round(sy(m.y + 10) - h - bounce), w, h);
 }
 
+// bottom edge for overlay text: on phones, stay above the touch buttons
+function bottomY() { return innerWidth <= 700 ? cv.height - 110 * (cv.width / innerWidth) : cv.height; }
+
 function bigText(text, cy, maxScale, color, outline) {
   let s = maxScale;
   while (s > 1 && S.textWidth(text, s) > cv.width * 0.92) s--;
@@ -553,7 +580,7 @@ function drawOverlay(now) {
     bigText('GET READY', cy - 20 * ts + h + 14 * ts, 3 * ts, '#1d1b2f', '#ffffff');
   } else if (G.phase === 'run' && G.lastPt < MONSTER.grace && !(G.view && G.view.monster) && !(G.me && G.me.st === 'wait')) {
     const n = Math.max(0, Math.ceil(MONSTER.grace - G.lastPt));
-    if (n <= 10) bigText(`SCOPE CREEP ARRIVES IN ${n}`, cv.height - 70 * ts, 2 * ts, '#5a4fcf', '#ffffff');
+    if (n <= 10) bigText(`SCOPE CREEP ARRIVES IN ${n}`, bottomY() - 70 * ts, 2 * ts, '#5a4fcf', '#ffffff');
   }
 
   if (G.banner && now < G.banner.until) {
@@ -564,10 +591,10 @@ function drawOverlay(now) {
 
   const me = G.me;
   if (me && me.st === 'eaten' && G.phase === 'run') {
-    bigText(G.eatenSlot ? `YOU DEMO #${G.eatenSlot}` : 'YOU GOT EATEN', cv.height - 90 * ts, 3 * ts, '#ffffff', '#5a4fcf');
-    bigText('SPECTATING THE SCOPE CREEP', cv.height - 60 * ts, ts, '#1d1b2f', '#ffffff');
+    bigText(G.eatenSlot ? `YOU DEMO #${G.eatenSlot}` : 'YOU GOT EATEN', bottomY() - 90 * ts, 3 * ts, '#ffffff', '#5a4fcf');
+    bigText('SPECTATING THE SCOPE CREEP', bottomY() - 60 * ts, ts, '#1d1b2f', '#ffffff');
   } else if (me && me.st === 'wait' && G.phase === 'run') {
-    bigText("MISSED THE LIFT: YOU'RE DEMOING FIRST", cv.height - 70 * ts, 2 * ts, '#1d1b2f', '#ffffff');
+    bigText("MISSED THE LIFT: YOU'RE DEMOING FIRST", bottomY() - 70 * ts, 2 * ts, '#1d1b2f', '#ffffff');
   }
 
   // monster off-screen indicator
@@ -588,6 +615,17 @@ function drawOverlay(now) {
   }
 
   if (G.phase === 'run' && G.view) drawMinimap(ts);
+
+  // your own distance, big and always visible during a round
+  if ((G.phase === 'run' || G.phase === 'count') && me && me.st !== 'wait') {
+    const dpr = cv.width / innerWidth;
+    const big = 3 * ts, small = ts;
+    const x = 14 * dpr;
+    const y = innerWidth <= 700 ? cv.height * 0.42 : cv.height - 14 * dpr - 7 * big - 10 * small;
+    const label = me.st === 'eaten' ? 'YOU MADE IT' : 'DISTANCE';
+    S.drawText(g, label, x, y, small, '#1d1b2f', '#ffffff');
+    S.drawText(g, `${metres(me.y)}M`, x, y + 10 * small, big, me.st === 'eaten' ? '#5a4fcf' : '#000080', '#ffffff');
+  }
 }
 
 function drawMinimap(ts) {
@@ -597,7 +635,8 @@ function drawMinimap(ts) {
   let y0 = Math.min(...ps.map(p => p.y)), y1 = Math.max(...ps.map(p => p.y));
   if (m) y0 = Math.min(y0, m.y);
   if (y1 - y0 < 300) y1 = y0 + 300;
-  const H = cv.height * 0.42, X = cv.width - 22 * ts, Y = cv.height * 0.5;
+  const phone = innerWidth <= 700;
+  const H = cv.height * (phone ? 0.3 : 0.42), X = cv.width - 22 * ts, Y = cv.height * (phone ? 0.38 : 0.5);
   g.fillStyle = 'rgba(192,192,192,0.85)'; g.fillRect(X - 6 * ts, Y - 6 * ts, 16 * ts, H + 12 * ts);
   g.fillStyle = '#ffffff'; g.fillRect(X - 2 * ts, Y, 8 * ts, H);
   const my = (y) => Y + (y - y0) / (y1 - y0) * H;
@@ -612,6 +651,7 @@ function drawMinimap(ts) {
 
 // ---------------------------------------------------------------------------
 // DOM panels
+const metres = (y) => Math.max(0, Math.round((y - START_Y) / PX_PER_M));
 function li(html, cls) { const e = document.createElement('li'); if (cls) e.className = cls; e.innerHTML = html; return e; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function sw(color) { return `<span class="swatch" style="background:${esc(color)}"></span>`; }
@@ -640,11 +680,17 @@ function renderPanels(force) {
   if (G.phase === 'run' && G.view) {
     const ul = $('#alive-list');
     ul.replaceChildren();
-    const alive = G.view.players.filter(p => p.st !== 'eaten' && p.st !== 'wait')
-      .map(p => (p.id === G.you && G.me ? { ...p, y: G.me.y } : p)).sort((a, b) => b.y - a.y);
-    for (const p of alive) {
+    const withMe = G.view.players.filter(p => p.st !== 'wait')
+      .map(p => (p.id === G.you && G.me && G.me.st !== 'eaten' ? { ...p, y: G.me.y } : p));
+    const alive = withMe.filter(p => p.st !== 'eaten').sort((a, b) => b.y - a.y);
+    const eaten = withMe.filter(p => p.st === 'eaten').sort((a, b) => G.order.indexOf(b.id) - G.order.indexOf(a.id));
+    alive.forEach((p, i) => {
       const r = G.roster.get(p.id) || {};
-      ul.append(li(`${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}${r.bot ? ' 🤖' : ''}</span><span class="meta">${Math.max(0, Math.round((p.y - START_Y) / PX_PER_M))}m</span>`, (p.id === G.you ? 'me ' : '') + (r.on === false ? 'off' : '')));
+      ul.append(li(`<span class="num">${i + 1}.</span>${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}${r.bot ? ' 🤖' : ''}</span><span class="meta">${metres(p.y)} m</span>`, (p.id === G.you ? 'me ' : '') + (r.on === false ? 'off' : '')));
+    });
+    for (const p of eaten) {
+      const slot = G.missed.length + G.order.indexOf(p.id) + 1;
+      ul.append(li(`<span class="num">🍽</span>${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}</span><span class="meta">${metres(p.y)} m · demos #${slot}</span>`, 'gone' + (p.id === G.you ? ' me' : '')));
     }
     $('#abort').hidden = G.hostId !== G.you;
   }
@@ -689,7 +735,8 @@ function showResults() {
     if (G.missed && G.missed.includes(f.id)) tags.push('<span class="tagpill">missed the lift</span>');
     if (f.id === G.survivor) tags.push('<span class="tagpill win">last one standing</span>');
     if (f.bot) tags.push('<span class="tagpill">bot</span>');
-    ol.append(li(`${sw(f.color || '#888')}<span class="nm">${esc(f.name)}</span>${tags.join('')}`));
+    const dist = G.missed && G.missed.includes(f.id) ? '' : `<span class="dist">${f.dist ?? 0} m</span>`;
+    ol.append(li(`${sw(f.color || '#888')}<span class="nm">${esc(f.name)}</span>${tags.join('')}${dist}`));
   }
   const isHost = G.hostId === G.you;
   for (const b of document.querySelectorAll('.host-only')) b.hidden = !isHost;
@@ -759,10 +806,7 @@ function initLanding() {
   };
   $('#create').onclick = () => {
     if (!needName()) return;
-    const L = 'BCDFGHJKLMNPQRSTVWXZ';
-    let code = '';
-    for (let i = 0; i < 4; i++) code += L[Math.floor(Math.random() * L.length)];
-    connect(code);
+    connect(newCode(), true);
   };
   $('#join').onclick = () => {
     if (!needName()) return;
@@ -816,7 +860,8 @@ $('#copy-order').onclick = async () => {
   const lines = [`:skier: Demo order for ${d} (decided by the Scope Creep)`];
   (G.final || []).forEach((f, i) => {
     const note = G.missed && G.missed.includes(f.id) ? ' (missed the lift)' : f.id === G.survivor ? ' (last one standing)' : '';
-    lines.push(`${i + 1}. ${f.name}${note}`);
+    const dist = G.missed && G.missed.includes(f.id) ? '' : ` · ${f.dist ?? 0} m`;
+    lines.push(`${i + 1}. ${f.name}${note}${dist}`);
   });
   const text = lines.join('\n');
   try { await navigator.clipboard.writeText(text); } catch {

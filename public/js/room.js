@@ -9,13 +9,14 @@
 
 import {
   Terrain, newSkier, stepSkier, steer, collideSkiers, botThink, newBrain,
-  mulberry32, randomSeed, WORLD_W, START_Y, MONSTER, RAMP_SPEED, ST, ST_NAME, monsterSpeed, monsterChew,
+  mulberry32, randomSeed, WORLD_W, START_Y, PX_PER_M, MONSTER, RAMP_SPEED, ST, ST_NAME, monsterSpeed, monsterChew,
 } from './sim.js';
 
 const TICK_MS = 50;
 const COUNTDOWN = 3;
 const MAX_PLAYERS = 24;
 const LOBBY_WRAP_Y = 5200;
+export const ROOM_TTL_MS = 30 * 60 * 1000; // an empty room stays joinable this long
 
 export const COLORS = ['#e63946', '#2a9d8f', '#f4a261', '#457b9d', '#9b5de5', '#f15bb5', '#00bbf9', '#80b918', '#ff7b00', '#3d405b', '#d4a373', '#06d6a0'];
 const BOT_NAMES = ['Ctrl Alt Elite', 'Null Pointer', 'Merge Conflict', 'Flaky Test', 'Hotfix Hank', 'Legacy Larry', 'Tech Debt', 'Prod Pusher', 'Rubber Duck', 'Off-By-One', 'Kernel Panic', 'Stand-up Stan'];
@@ -45,6 +46,12 @@ export class RoomLogic {
     this.endAt = null;
     this.onEmpty = opts.onEmpty || null;
     this.now = opts.now || (() => Date.now());
+    // A room only exists once someone has created it. `lastSeen` is when it
+    // was last occupied; the Durable Object persists it so a room survives
+    // the object being evicted from memory.
+    this.open = !!opts.openedAt && this.now() - opts.openedAt < ROOM_TTL_MS;
+    this.lastSeen = opts.openedAt || 0;
+    this.onActivity = opts.onActivity || null;
   }
 
   newMountain() { this.seed = randomSeed(); this.terrain = new Terrain(this.seed); }
@@ -67,6 +74,7 @@ export class RoomLogic {
     }
     if (this.sockets.size === 0) {
       clearInterval(this.timer); this.timer = null;
+      if (this.open) this.touch();
       // nobody's here: reset so the next visitor gets a fresh lobby
       this.players.clear(); this.phase = 'lobby'; this.hostId = null; this.monster = null;
       this.onEmpty && this.onEmpty();
@@ -94,8 +102,29 @@ export class RoomLogic {
   }
 
   // --- players ------------------------------------------------------------
+  exists() {
+    if (!this.open) return false;
+    if ([...this.players.values()].some(p => !p.bot && p.connected)) return true;
+    return this.now() - this.lastSeen < ROOM_TTL_MS;
+  }
+
+  touch() { this.lastSeen = this.now(); this.onActivity && this.onActivity(this.lastSeen); }
+
+  reject(ws, code, msg) {
+    this.send(ws, { t: 'error', code, msg });
+    this.sockets.delete(ws);
+    try { ws.close(4002, code); } catch {}
+  }
+
   join(ws, m) {
     if (this.sockets.get(ws)) return;
+    if (m.create) {
+      if (this.exists()) return this.reject(ws, 'taken', 'That room code is already in use.');
+      this.open = true; this.players.clear(); this.phase = 'lobby'; this.hostId = null;
+    } else if (!this.exists()) {
+      return this.reject(ws, 'noroom', `There's no room with the code ${this.code}. Check the code with whoever made the room, or create a new one.`);
+    }
+    this.touch();
     let p = typeof m.id === 'string' && this.players.get(m.id);
     if (p && !p.bot) {
       // reconnecting: take over the existing skier
@@ -231,7 +260,8 @@ export class RoomLogic {
     this.final = [...this.missed, ...this.order, ...alive.map(p => p.id)];
     const names = this.final.map(id => {
       const p = this.players.get(id);
-      return p ? { id, name: p.name, bot: p.bot, color: p.color } : { id, name: '?' };
+      const dist = p ? Math.max(0, Math.round((p.sk.y - START_Y) / PX_PER_M)) : 0;
+      return p ? { id, name: p.name, bot: p.bot, color: p.color, dist } : { id, name: '?', dist: 0 };
     });
     this.final = names;
     this.monster = null;

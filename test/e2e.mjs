@@ -29,6 +29,15 @@ await host.waitForFunction(() => window.__dd && window.__dd.you);
 const code = await host.evaluate(() => window.__dd.code);
 console.log('room', code);
 
+// a made-up code is refused instead of silently creating a room
+const typo = await client('typo');
+await typo.goto(`${BASE}/?room=ZZZQ`);
+await typo.fill('#name', 'Typo Tim');
+await typo.click('#join');
+await typo.waitForFunction(() => document.querySelector('#landing-err').textContent.includes('no room'));
+await shot(typo, '01b-bad-code');
+console.log('bad code ->', await typo.textContent('#landing-err'));
+
 const p2 = await client('p2');
 await p2.goto(`${BASE}/?room=${code}`);
 await p2.fill('#name', 'Dana');

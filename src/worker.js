@@ -34,7 +34,17 @@ export class Room {
   async fetch(request) {
     const url = new URL(request.url);
     const code = url.pathname.match(ROOM_RE)?.[1]?.toUpperCase() || 'ROOM';
-    if (!this.logic) this.logic = new RoomLogic(code);
+    if (!this.logic) {
+      // Remember when the room was last in use so it still counts as
+      // "existing" (joinable) even if this object was evicted from memory.
+      const openedAt = (await this.state.storage.get('lastSeen')) || 0;
+      if (!this.logic) {
+        this.logic = new RoomLogic(code, {
+          openedAt,
+          onActivity: (ts) => { this.state.storage.put('lastSeen', ts); },
+        });
+      }
+    }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
