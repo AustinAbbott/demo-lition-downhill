@@ -532,6 +532,16 @@ function drawOverlay(now) {
   const ts = Math.max(1, Math.round(Z));
   const cy = cv.height * 0.56;
 
+  if (G.phase === 'lobby') {
+    const msg = G.hostId === G.you
+      ? 'WARM-UP: NO MONSTER UNTIL YOU HIT START'
+      : 'WARM-UP: NO MONSTER UNTIL THE HOST STARTS';
+    // top of the screen on desktop (lobby window is bottom-left); above the touch buttons on phones
+    const dpr = cv.width / innerWidth;
+    const y = innerWidth <= 700 ? cv.height - 140 * dpr : 16 * dpr;
+    bigText(msg, y, ts * 2, '#5a4fcf', '#ffffff');
+  }
+
   if (G.phase === 'count') {
     const left = 3 - (now - G.phaseStart) / 1000;
     const n = Math.max(1, Math.ceil(left));
@@ -644,7 +654,8 @@ function renderLobby() {
   lp.hidden = G.phase !== 'lobby';
   if (lp.hidden) return;
   const isHost = G.hostId === G.you;
-  $('#lobby-title').textContent = G.practice ? 'Practice run' : `Lobby: ${G.roster.size} skier${G.roster.size === 1 ? '' : 's'}`;
+  $('#lobby-title').textContent = G.practice ? 'Practice: warm-up' : `Lobby: ${G.roster.size} skier${G.roster.size === 1 ? '' : 's'}`;
+  $('#start').textContent = G.practice ? 'Start practice round (monster on) ▶' : 'Start the round ▶';
   $('#share-row').hidden = G.practice;
   $('#room-code').textContent = G.code;
   $('#share-link').value = `${location.origin}${location.pathname}?room=${G.code}`;
