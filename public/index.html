@@ -18,6 +18,11 @@
       <div class="win-body">
         <canvas id="logo" width="244" height="64"></canvas>
         <p class="tag">Ski for your life. <b>The order you get eaten is the order you demo.</b></p>
+        <!-- shown when you arrive from a shared link -->
+        <div id="invite" class="invite" hidden>
+          <div class="invite-head">You're joining room <b id="invite-code">----</b></div>
+          <div id="invite-status" class="invite-status">Checking the room…</div>
+        </div>
         <label class="field">Your name
           <input id="name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="e.g. Austin">
         </label>
@@ -30,17 +35,27 @@
         <div class="field">Scarf
           <div id="scarves" class="colors"></div>
         </div>
-        <fieldset class="group">
-          <legend>Play with your team</legend>
-          <div class="row">
-            <button id="create" class="btn primary">Create a room</button>
-            <span class="or">or</span>
-            <input id="code" class="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false">
-            <button id="join" class="btn">Join</button>
-          </div>
-        </fieldset>
-        <div class="row">
-          <button id="practice" class="btn">Practice solo vs. bots</button>
+        <div id="invite-actions" class="row" hidden>
+          <button id="join-invite" class="btn primary big">Join room ----  ▶</button>
+          <a href="./" id="not-joining" class="quiet-link">Start a different game instead</a>
+        </div>
+        <div id="normal-actions">
+          <fieldset class="group">
+            <legend>Join your team's game</legend>
+            <div class="row">
+              <input id="code" class="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" aria-label="Room code">
+              <button id="join" class="btn primary">Join ▶</button>
+              <span id="code-status" class="code-status" aria-live="polite"></span>
+            </div>
+          </fieldset>
+          <fieldset class="group secondary">
+            <legend>Or host a new game</legend>
+            <div class="row">
+              <button id="create" class="btn">Create a new room</button>
+              <button id="practice" class="btn">Practice solo vs. bots</button>
+            </div>
+            <p class="muted small-text">Only one person creates the room. Everyone else joins it with the code or link.</p>
+          </fieldset>
         </div>
         <p id="landing-err" class="err" role="alert"></p>
       </div>

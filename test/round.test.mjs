@@ -51,6 +51,9 @@ console.log('12-skier round durations (s):', durations.map(d => d.toFixed(1)).jo
   const wd = box(d); room.attach(wd); clearInterval(room.timer);
   room.message(wd, JSON.stringify({ t: 'join', name: 'Other', id: 'oth001', create: true }));
   assert.equal(d[0].code, 'taken');
+  const inf = room.info();
+  assert.equal(inf.exists, true); assert.equal(inf.host, 'Host'); assert.equal(inf.skiers, 2); assert.equal(inf.phase, 'lobby');
+  assert.deepEqual(new RoomLogic('NONE', { now: () => fakeNow }).info(), { exists: false });
   // everyone leaves; the room stays joinable for a while (host refreshes), then expires
   room.detach(wb); room.detach(wc);
   const we = box([]); room.attach(we); clearInterval(room.timer);

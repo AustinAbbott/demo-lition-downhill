@@ -8,7 +8,7 @@ The gameplay is an homage to the classic Windows ski game. All the art, the code
 
 ## How a round works
 
-1. One person clicks **Create a room** and shares the link (`…/?room=KXBT`). Joining only works with the code of a room that already exists. A typo gets a "no room with that code" message instead of putting you in an empty room. An empty room stays joinable for 30 minutes, so the host can refresh without losing it.
+1. One person clicks **Create a new room** and shares the link (`…/?room=KXBT`). Opening that link puts the start screen in "You're joining room KXBT" mode. You get one big Join button and a live check of the room ("Austin's lobby · 5 skiers warming up"), and the create buttons are hidden, so nobody accidentally starts a second game. Without a link, "Join your team's game" comes first and checks codes as you type, and pressing Enter never creates a room. Joining only works with the code of a room that already exists. A typo gets a "no room with that code" message instead of putting you in an empty room. An empty room stays joinable for 30 minutes, so the host can refresh without losing it.
 2. Everyone joins. The lobby is a warm-up run, so people can ski around while waiting. Press <kbd>R</kbd> to go back to the top.
 
    **Big-screen view:** whoever created the room is usually the one sharing their screen on the call. Their camera zooms out to show the whole pack whenever they aren't skiing: in the lobby, after they're eaten, and on the results screen. In the lobby it also shows the join address and room code in large text. When the field gets too spread out to fit, it follows the yeti and whoever is closest to it. They still ski normally once the round starts.

@@ -114,6 +114,17 @@ export class RoomLogic {
   }
 
   // --- players ------------------------------------------------------------
+  // What the start screen shows before you join: does it exist, whose is it, how many are in.
+  info() {
+    if (!this.exists()) return { exists: false };
+    const humans = [...this.players.values()].filter(p => !p.bot && p.connected);
+    const host = this.players.get(this.hostId);
+    return {
+      exists: true, phase: this.phase, host: host ? host.name : null,
+      skiers: humans.length, bots: [...this.players.values()].filter(p => p.bot).length,
+    };
+  }
+
   exists() {
     if (!this.open) return false;
     if ([...this.players.values()].some(p => !p.bot && p.connected)) return true;

@@ -5,6 +5,7 @@
 import { RoomLogic } from '../public/js/room.js';
 
 const ROOM_RE = /^\/api\/room\/([A-Za-z0-9]{3,8})\/ws$/;
+const INFO_RE = /^\/api\/room\/([A-Za-z0-9]{3,8})\/info$/;
 
 export default {
   async fetch(request, env) {
@@ -16,6 +17,12 @@ export default {
       }
       const code = m[1].toUpperCase();
       const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
+      return stub.fetch(request);
+    }
+    const info = url.pathname.match(INFO_RE);
+    if (info) {
+      // is there a room with this code? (used by the start screen before joining)
+      const stub = env.ROOMS.get(env.ROOMS.idFromName(info[1].toUpperCase()));
       return stub.fetch(request);
     }
     if (url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
@@ -33,7 +40,7 @@ export class Room {
 
   async fetch(request) {
     const url = new URL(request.url);
-    const code = url.pathname.match(ROOM_RE)?.[1]?.toUpperCase() || 'ROOM';
+    const code = (url.pathname.match(ROOM_RE) || url.pathname.match(INFO_RE))?.[1]?.toUpperCase() || 'ROOM';
     if (!this.logic) {
       // Remember when the room was last in use so it still counts as
       // "existing" (joinable) even if this object was evicted from memory.
@@ -44,6 +51,12 @@ export class Room {
           onActivity: (ts) => { this.state.storage.put('lastSeen', ts); },
         });
       }
+    }
+
+    if (INFO_RE.test(url.pathname)) {
+      return new Response(JSON.stringify(this.logic.info()), {
+        headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+      });
     }
 
     const pair = new WebSocketPair();

@@ -31,8 +31,9 @@ console.log('room', code);
 
 // a made-up code is refused instead of silently creating a room
 const typo = await client('typo');
-await typo.goto(`${BASE}/?room=ZZZQ`);
+await typo.goto(BASE);
 await typo.fill('#name', 'Typo Tim');
+await typo.fill('#code', 'ZZZQ');
 await typo.click('#join');
 await typo.waitForFunction(() => document.querySelector('#landing-err').textContent.includes('no room'));
 await shot(typo, '01b-bad-code');
@@ -41,11 +42,11 @@ console.log('bad code ->', await typo.textContent('#landing-err'));
 const p2 = await client('p2');
 await p2.goto(`${BASE}/?room=${code}`);
 await p2.fill('#name', 'Dana');
-await p2.click('#join');
+await p2.click('#join-invite');
 const p3 = await client('p3');
 await p3.goto(`${BASE}/?room=${code}`);
 await p3.fill('#name', 'Raj');
-await p3.click('#join');
+await p3.click('#join-invite');
 await p3.waitForFunction(() => window.__dd && window.__dd.you);
 
 // host adds named bot + random bots
@@ -101,7 +102,7 @@ await sleep(5000);
 const late = await client('late');
 await late.goto(`${BASE}/?room=${code}`);
 await late.fill('#name', 'Late Lou');
-await late.click('#join');
+await late.click('#join-invite');
 await sleep(1500);
 await shot(late, '12-late-joiner');
 console.log('late missed list:', await host.evaluate(() => window.__dd.missed.length));

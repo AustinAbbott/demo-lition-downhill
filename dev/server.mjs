@@ -17,6 +17,13 @@ const rooms = new Map();
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  const info = url.pathname.match(/^\/api\/room\/([A-Za-z0-9]{3,8})\/info$/);
+  if (info) {
+    const room = rooms.get(info[1].toUpperCase());
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(room ? room.info() : { exists: false }));
+    return;
+  }
   let file = path.join(ROOT, decodeURIComponent(url.pathname));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');

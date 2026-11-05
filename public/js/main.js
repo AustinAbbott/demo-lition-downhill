@@ -1071,8 +1071,8 @@ function initLanding() {
   const nameIn = $('#name'), codeIn = $('#code');
   nameIn.value = myName;
   const params = new URLSearchParams(location.search);
-  const room = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  if (room) { codeIn.value = room; $('#join').classList.add('primary'); $('#create').classList.remove('primary'); }
+  let room = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  setupJoinUI(room, codeIn);
 
   const colors = $('#colors');
   for (const c of COLORS) {
@@ -1145,9 +1145,76 @@ function initLanding() {
     connect(code);
   };
   $('#practice').onclick = () => { if (needName()) connectPractice(); };
-  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') (room ? $('#join') : $('#create')).click(); });
+  $('#join-invite').onclick = () => { if (needName()) connect(G.inviteCode); };
+  // Enter never creates a room: it joins the invite, or the typed code
+  nameIn.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (G.inviteCode) $('#join-invite').click();
+    else if (codeIn.value.trim()) $('#join').click();
+    else codeIn.focus();
+  });
   codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#join').click(); });
-  (myName ? (room ? $('#join') : nameIn) : nameIn).focus();
+  (myName ? (G.inviteCode ? $('#join-invite') : codeIn) : nameIn).focus();
+}
+
+// What the start screen shows about a room before you join it.
+async function roomInfo(code) {
+  try {
+    const r = await fetch(`/api/room/${encodeURIComponent(code)}/info`, { cache: 'no-store' });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+function describeRoom(info) {
+  const whose = info.host ? `${info.host}'s` : 'The';
+  const n = info.skiers + info.bots;
+  if (info.phase === 'run' || info.phase === 'count') return `${whose} round is already going. You'll join as "missed the lift" and demo first.`;
+  if (info.phase === 'over') return `${whose} room: results are up, and the next round starts soon.`;
+  return `${whose} lobby · ${n} skier${n === 1 ? '' : 's'} warming up`;
+}
+
+function setupJoinUI(room, codeIn) {
+  const invite = $('#invite'), status = $('#invite-status');
+  const showInvite = (on) => {
+    invite.hidden = !on; $('#invite-actions').hidden = !on; $('#normal-actions').hidden = on;
+  };
+  if (room) {
+    // Arrived from a shared link: make joining the one obvious thing to do.
+    G.inviteCode = room;
+    $('#invite-code').textContent = room;
+    $('#join-invite').textContent = `Join room ${room}  ▶`;
+    codeIn.value = room;
+    showInvite(true);
+    roomInfo(room).then((info) => {
+      if (!info) { status.textContent = ''; return; }
+      if (info.exists) { status.className = 'invite-status ok'; status.textContent = describeRoom(info); }
+      else {
+        status.className = 'invite-status bad';
+        status.textContent = "That room isn't open anymore. The link may be from an old game. Ask whoever's hosting for a fresh link.";
+        $('#join-invite').hidden = true;
+      }
+    });
+  }
+  $('#not-joining').onclick = (e) => {
+    e.preventDefault();
+    G.inviteCode = null; codeIn.value = '';
+    history.replaceState(null, '', location.pathname);
+    showInvite(false); codeIn.focus();
+  };
+  // live check as you type a code
+  let t = null, last = '';
+  codeIn.addEventListener('input', () => {
+    const code = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const out = $('#code-status');
+    clearTimeout(t);
+    if (code.length < 4) { out.textContent = ''; out.className = 'code-status'; return; }
+    t = setTimeout(async () => {
+      last = code;
+      const info = await roomInfo(code);
+      if (last !== code || !info) return;
+      out.className = 'code-status ' + (info.exists ? 'ok' : 'bad');
+      out.textContent = info.exists ? `✓ ${info.host ? info.host + "'s room" : 'Found it'} · ${info.skiers + info.bots} in` : 'No room with that code';
+    }, 250);
+  });
 }
 
 $('#copy-link').onclick = async () => {
