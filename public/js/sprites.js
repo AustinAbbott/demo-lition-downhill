@@ -224,69 +224,139 @@ export function obstacle(type, v) {
 }
 
 // --- the Scope Creep --------------------------------------------------------------
-// A lumpy indigo snow-slug, three eyes, too many teeth, covered in sticky notes.
-// Redrawn every frame into a small buffer so it can wobble and look around.
-const CW = 56, CH = 60;
+// An original yeti: shaggy lavender-white fur, curled horns, three eyes that
+// track their target, tusks, a work lanyard, and sticky notes stuck in its fur.
+// Redrawn every frame into a small buffer so it can lumber, swing its arms
+// and look around.
+const CW = 64, CH = 70;
 let creepBuf = null;
 export function creep(t, look, mouth) {
   if (!creepBuf) creepBuf = canvas(CW, CH);
   const g = creepBuf.getContext('2d');
   g.clearRect(0, 0, CW, CH);
-  const cx = CW / 2, cy = 36;
-  const px = (x, y, col) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); };
+  const px = (x, y, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), 1, 1); };
+  const rect = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), w, h); };
+
+  const FUR = '#efecff', FUR2 = '#d9d3fa', SHADE = '#b9b0ec', LINE = '#3b3470';
+  const SKIN = '#8a80d6', SKIN2 = '#6c62bf', HORN = '#eadcb0', HORN2 = '#b49d5c';
+  const walk = Math.sin(t * 9);            // lumbering gait
+  const chew = mouth > 0.3;
+
+  // shaggy blob: ellipse with tufted edge; returns 0 outside, 1 edge, 2 inside
+  const shag = (x, y, cx, cy, rx, ry, seed) => {
+    const dx = x - cx, dy = y - cy, a = Math.atan2(dy, dx);
+    const tuft = Math.max(0, Math.sin(a * 13 + seed)) * 0.22 + Math.max(0, Math.sin(a * 7 - seed * 2)) * 0.1;
+    const r = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+    if (r > 1 + tuft) return 0;
+    return r > 0.86 + tuft ? 1 : 2;
+  };
+  const furCol = (x, y, shadeFrom) => {
+    if (y > shadeFrom) return ((x * 5 + y * 3) % 9 === 0) ? SHADE : FUR2;
+    return ((x * 7 + y * 3) % 11 === 0) ? FUR2 : FUR;
+  };
+
+  // legs (behind the body), stepping
+  for (const [lx, ph] of [[21, 1], [43, -1]]) {
+    const lift = Math.max(0, walk * ph) * 3;
+    const y0 = 52 - lift;
+    for (let y = y0; y < CH - 2 - lift; y++) for (let x = lx - 6; x <= lx + 6; x++) {
+      const e = Math.abs(x - lx) >= 5 || y >= CH - 4 - lift;
+      px(x, y, e ? LINE : (y > y0 + 6 ? SHADE : FUR2));
+    }
+    // big feet with toes
+    rect(lx - 7, CH - 4 - lift, 15, 2, SKIN2);
+    for (let k = -6; k <= 6; k += 4) px(lx + k, CH - 2 - lift, LINE);
+  }
+
+  // arms (swinging), drawn as shaggy columns from shoulder to hand
+  const arm = (sx, sy, dir, swing) => {
+    const hx = sx + dir * 6 + swing, hy = sy + 21;
+    for (let i = 0; i <= 21; i++) {
+      const f = i / 21, cx = sx + (hx - sx) * f, cy = sy + (hy - sy) * f;
+      const w = 4 - f * 1.5;                       // tapers toward the wrist
+      const tuft = (i % 4 === 1) ? 2 : (i % 4 === 2 ? 1 : 0); // shaggy outer edge
+      for (let x = -Math.round(w); x <= Math.round(w) + tuft; x++) {
+        const xo = x * dir;                         // outward is +
+        const edge = x === -Math.round(w) || x === Math.round(w) + tuft;
+        px(cx + xo, cy, edge ? LINE : (x > 0 ? SHADE : FUR));
+      }
+    }
+    // hand + claws
+    rect(hx - 3, hy, 7, 4, SKIN2);
+    for (let k = -3; k <= 3; k += 3) { px(hx + k, hy + 4, '#ffffff'); px(hx + k, hy + 5, '#ffffff'); }
+  };
 
   // body
-  for (let y = 4; y < CH; y++) for (let x = 0; x < CW; x++) {
-    const dx = x - cx + 0.5, dy = y - cy;
-    const ang = Math.atan2(dy, dx);
-    const rx = 24 + Math.sin(ang * 4 + t * 5) * 1.6;
-    const ry = (dy < 0 ? 30 : 23) + Math.sin(ang * 3 - t * 4) * 1.4;
-    const r = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-    if (r > 1 || y >= CH - 1) continue;
-    let col = '#5a4fcf';
-    if (r > 0.86) col = '#221d55';
-    else if (dy > 12) col = '#3f37a0';
-    else if (dx < -6 && dy < -8 && (x + y) % 2 === 0) col = '#8a80ff';
-    if (dy < -24 + Math.sin(x * 0.9) * 2 && r <= 0.86) col = '#ffffff'; // snow on its head
-    px(x, y, col);
+  for (let y = 22; y < 60; y++) for (let x = 2; x < CW - 2; x++) {
+    const v = shag(x, y, 32, 40, 19, 19, 0.7 + Math.sin(t * 2) * 0.15);
+    if (v) px(x, y, v === 1 ? LINE : furCol(x, y, 48));
   }
-  // drippy base
-  for (let x = 6; x < CW - 6; x++) {
-    const d = Math.round(1.5 + Math.sin(x * 0.8 + t * 6) * 1.5);
-    for (let k = 0; k < d; k++) px(x, CH - 3 + k, '#3f37a0');
+  // chest patch of skin
+  for (let y = 30; y < 50; y++) for (let x = 22; x < 43; x++) {
+    const dx = (x - 32.5) / 10, dy = (y - 40) / 10;
+    if (dx * dx + dy * dy < 1) px(x, y, dy > 0.4 ? SKIN2 : SKIN);
   }
-  // sticky notes stuck all over it
-  const notes = [[9, 25, '#ffd60a'], [41, 21, '#ff8fab'], [12, 43, '#90e0ef'], [39, 41, '#ffd60a']];
-  for (const [nx, ny, col] of notes) {
-    g.fillStyle = col; g.fillRect(nx, ny, 6, 6);
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(nx + 1, ny + 2, 4, 1); g.fillRect(nx + 1, ny + 4, 3, 1);
+  // work lanyard + badge
+  for (let i = 0; i < 9; i++) { px(26 + i * 0.6, 29 + i, '#e63946'); px(39 - i * 0.6, 29 + i, '#e63946'); }
+  rect(29, 38, 8, 7, '#ffffff');
+  rect(29, 38, 8, 2, '#000080');
+  rect(30, 41, 3, 3, '#7a6fd0'); rect(34, 41, 2, 1, '#999'); rect(34, 43, 2, 1, '#999');
+
+  arm(13, 28, -1, walk * 3);
+  arm(51, 28, 1, -walk * 3);
+
+  // head (overlaps body; no neck to speak of)
+  const hy = 17 + (chew ? Math.abs(Math.sin(t * 14)) : 0);
+  for (let y = 2; y < 34; y++) for (let x = 12; x < 52; x++) {
+    const v = shag(x, y, 32, hy, 15, 13, 2.1);
+    if (v) px(x, y, v === 1 ? LINE : furCol(x, y, 99));
   }
-  // stubby flailing arms
-  const wave = Math.sin(t * 9) * 3;
-  g.fillStyle = '#4b42b8';
-  g.fillRect(1, 30 + wave, 5, 4); g.fillRect(0, 26 + wave, 3, 5);
-  g.fillRect(CW - 6, 30 - wave, 5, 4); g.fillRect(CW - 3, 26 - wave, 3, 5);
-  // eyes that track their target
+  // curled horns
+  const horn = (bx, dir) => {
+    const pts = [[0, 0], [1, -2], [2, -4], [4, -5], [6, -5], [7, -4], [7, -2]];
+    for (const [hx, hy2] of pts) {
+      const x = bx + hx * dir, y = hy - 9 + hy2;
+      rect(x - 1, y, 3, 2, HORN); px(x + dir, y + 1, HORN2);
+    }
+  };
+  horn(23, -1); horn(41, 1);
+  // face
+  for (let y = hy - 6; y < hy + 10; y++) for (let x = 21; x < 44; x++) {
+    const dx = (x - 32.5) / 11, dy = (y - (hy + 2)) / 8.5;
+    if (dx * dx + dy * dy < 1) px(x, y, dy > 0.5 ? SKIN2 : SKIN);
+  }
+  // brow tuft
+  for (let x = 22; x < 43; x++) if (x % 2) px(x, hy - 6 + (x % 4 === 1 ? 0 : 1), FUR);
+
+  // three eyes that track the target
   const lx = Math.max(-1, Math.min(1, look[0])), ly = Math.max(-1, Math.min(1, look[1]));
   const blink = (Math.floor(t * 1.3) % 5 === 0) && (t * 1.3 % 1 < 0.12);
-  for (const [ex, ey, r] of [[17, 20, 4], [28, 14, 5], [39, 20, 4]]) {
+  for (const [ex, ey, r] of [[26, hy - 1, 3], [32.5, hy - 3, 3.5], [39, hy - 1, 3]]) {
     for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
-      if (x * x + y * y > r * r + 1) continue;
-      px(ex + x, ey + y, blink ? '#3f37a0' : (x * x + y * y > (r - 1) * (r - 1) + 1 ? '#221d55' : '#ffffff'));
+      if (x * x + y * y > r * r + 0.5) continue;
+      px(ex + x, ey + y, blink ? SKIN2 : (x * x + y * y > (r - 1) * (r - 1) + 0.5 ? LINE : '#ffffff'));
     }
-    if (!blink) { g.fillStyle = '#ff2e63'; g.fillRect(ex + Math.round(lx * (r - 2)) - 1, ey + Math.round(ly * (r - 2)) - 1, 3, 3); g.fillStyle = '#000'; g.fillRect(ex + Math.round(lx * (r - 2)), ey + Math.round(ly * (r - 2)), 1, 1); }
+    if (!blink) {
+      const pxp = ex + Math.round(lx * (r - 1.5)), pyp = ey + Math.round(ly * (r - 1.5));
+      rect(pxp - 1, pyp - 1, 2, 2, '#ff2e63'); px(pxp, pyp, '#000');
+    }
   }
-  // mouth
-  const mw = 30, mx = cx - mw / 2;
-  const open = Math.round(2 + mouth * 12);
-  const my = 31;
-  g.fillStyle = '#2b0a2e';
-  g.fillRect(mx, my, mw, open);
-  if (mouth > 0.3) { g.fillStyle = '#e5383b'; g.fillRect(mx + 8, my + open - 4, 14, 3); }
+
+  // mouth with tusks
+  const mw = 16, mx = 32.5 - mw / 2, my = hy + 4;
+  const open = Math.round(2 + mouth * 9);
+  rect(mx, my, mw, open, '#2b0a2e');
+  if (mouth > 0.3) rect(mx + 4, my + open - 3, 8, 2, '#e5383b');
   g.fillStyle = '#ffffff';
-  for (let i = 0; i < mw; i += 4) {
-    g.fillRect(mx + i, my, 3, 2); g.fillRect(mx + i + 1, my + 2, 1, 1);
-    g.fillRect(mx + i + 2, my + open - 2, 3, 2); g.fillRect(mx + i + 3, my + open - 3, 1, 1);
+  for (let i = 1; i < mw - 1; i += 3) { g.fillRect(Math.round(mx + i), my, 2, 1); g.fillRect(Math.round(mx + i + 1), my + open - 1, 2, 1); }
+  // tusks poke up from the lower jaw
+  rect(mx - 1, my + open - 4, 2, 4, '#fffbe8'); rect(mx + mw - 1, my + open - 4, 2, 4, '#fffbe8');
+
+  // sticky notes stuck in the fur (feature requests, obviously)
+  const notes = [[8, 44, '#ffd60a'], [49, 47, '#ff8fab'], [17, 9, '#90e0ef'], [44, 55, '#ffd60a']];
+  for (const [nx, ny, col] of notes) {
+    rect(nx, ny, 5, 5, col);
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(nx + 1, ny + 2, 3, 1);
   }
   return creepBuf;
 }

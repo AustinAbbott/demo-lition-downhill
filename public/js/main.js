@@ -543,6 +543,8 @@ function drawCreep(m, now) {
   const grow = 1.15 + 0.05 * Math.min(8, (G.order || []).length); // it grows as it eats
   const w = Math.round(img.width * Z * grow), h = Math.round(img.height * Z * grow);
   const bounce = m.eat ? Math.abs(Math.sin(now / 90)) * 3 * Z : 0;
+  g.fillStyle = 'rgba(40,40,110,0.18)';
+  g.beginPath(); g.ellipse(sx(m.x), sy(m.y + 9), w * 0.38, 5 * Z, 0, 0, Math.PI * 2); g.fill();
   g.drawImage(img, Math.round(sx(m.x) - w / 2), Math.round(sy(m.y + 10) - h - bounce), w, h);
 }
 
@@ -772,7 +774,7 @@ function drawLogo() {
   const t = S.obstacle('tree', 2);
   lg.drawImage(t, 144, 2, t.width, t.height);
   const cr = S.creep(performance.now() / 1000, [-1, 0.6], 0.6);
-  lg.drawImage(cr, 194, 10, cr.width * 0.85, cr.height * 0.85);
+  lg.drawImage(cr, 192, 7, cr.width * 0.8, cr.height * 0.8);
 }
 
 function initLanding() {
