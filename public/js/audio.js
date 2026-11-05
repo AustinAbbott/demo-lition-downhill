@@ -36,6 +36,12 @@ export const sfx = {
   mogul: () => tone(120, 0.08, { type: 'triangle', vol: 0.12 }),
   hop: () => tone(500, 0.12, { slide: 300, vol: 0.05 }),
   ramp: () => tone(300, 0.4, { slide: 700, vol: 0.06 }),
+  coffee: () => { tone(500, 0.08, { type: 'triangle', vol: 0.08 }); tone(750, 0.08, { type: 'triangle', vol: 0.08, delay: 0.07 }); tone(1100, 0.18, { slide: 300, vol: 0.05, delay: 0.14 }); },
+  pto: () => [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.14, { type: 'triangle', vol: 0.09, delay: i * 0.08 })),
+  item: () => { tone(880, 0.07, { vol: 0.06 }); tone(1320, 0.12, { vol: 0.05, delay: 0.06 }); },
+  drop: () => tone(700, 0.18, { slide: -400, vol: 0.06, type: 'triangle' }),
+  meeting: () => [392, 370, 349, 311].forEach((f, i) => tone(f, i === 3 ? 0.45 : 0.16, { type: 'sawtooth', vol: 0.05, delay: i * 0.17, slide: i === 3 ? -40 : 0 })),
+  emote: () => tone(1000, 0.05, { vol: 0.035, type: 'triangle' }),
   roar: () => {
     tone(140, 0.7, { type: 'sawtooth', slide: -80, vol: 0.09 });
     tone(105, 0.8, { type: 'sawtooth', slide: -55, vol: 0.08, delay: 0.05 });

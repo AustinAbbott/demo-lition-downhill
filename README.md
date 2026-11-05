@@ -21,7 +21,7 @@ The gameplay is an homage to the classic Windows ski game. All the art, the code
    - **Roar (ROAAAR!):** it stops to roar, and everyone's screen shakes.
    - **Fickle (ACTUALLY…):** changes scope and goes after the second-to-last skier for a few seconds.
 
-   Under all of that, it starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
+   Under all of that, it starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect a little over 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
    During the round, the **Distance down the hill** panel ranks everyone by how far they've gone. Eaten skiers stay on the list, crossed out, with where they were caught. Your own distance is shown big in the corner.
 6. When the round ends, the results window shows the full order with everyone's distance. **Copy demo order** puts it on your clipboard, ready to paste into Slack.
 
@@ -35,6 +35,8 @@ Anyone who joins mid-round "missed the lift" and **demos first**.
 | <kbd>↓</kbd> (or S) | Point straight downhill. This is the fastest heading. |
 | <kbd>Space</kbd> (or ↑/W) | Hop over rocks, stumps, moguls and other skiers. A hop won't clear a tree. |
 | <kbd>R</kbd> | Lobby only: go back to the top. |
+| <kbd>E</kbd> | Drop a meeting invite behind you, if you're holding one. |
+| <kbd>1</kbd>–<kbd>4</kbd> | Emotes. |
 | <kbd>M</kbd> | Music on/off. It's remembered per browser, and there's also a **Music** button in the corner. Sound effects have their own **SFX** button. |
 
 Phones get on-screen buttons.
@@ -47,6 +49,17 @@ The soundtrack is three original chiptune loops synthesized in the browser, so t
   - after 3 eaten, faster hi-hats;
   - after 5, a busier kick;
   - after 7, the lead doubled an octave up.
+
+**Pickups** float on the slope. They're the same for everyone, and the first person to ski through one gets it:
+- ☕ **Coffee:** a 3-second speed burst, about 35% faster.
+- 🏝️ **PTO:** the next time the Scope Creep catches you, you're out of office. It's baffled for a moment and you slip away. It works once.
+- 📅 **Meeting invite:** hold up to two, then press <kbd>E</kbd> to drop one behind you. Whoever skis into it is stuck "in a meeting" for 1.6 seconds, and it says whose invite it was. A hop clears it, and you can't trip on your own.
+
+**Emotes:** <kbd>1</kbd> SORRY!, <kbd>2</kbd> GG, <kbd>3</kbd> HI!, <kbd>4</kbd> YIKES! show in a speech bubble over your head. On phones, the 💬 button cycles through them.
+
+**Cosmetics:** pick a hat (cowboy, top hat, crown, party hat, viking, propeller cap, chef or the classic beanie) and a scarf in the lobby. Your choice is remembered, and bots dress themselves. Hats fly off when you crash.
+
+Bots grab pickups, drop invites on people right behind them, and say GG when they're eaten.
 
 What's on the mountain (it gets more crowded the further down you go):
 - Trees, rocks and stumps knock you down for about a second.

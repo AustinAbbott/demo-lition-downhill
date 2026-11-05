@@ -10,7 +10,8 @@
 import {
   Terrain, newSkier, stepSkier, steer, collideSkiers, botThink, newBrain,
   mulberry32, randomSeed, WORLD_W, START_Y, PX_PER_M, MONSTER, RAMP_SPEED, ST, ST_NAME, monsterSpeed, monsterChew,
-  MOODS, MOOD,
+  MOODS, MOOD, COFFEE_SECS, PTO_IMMUNE_SECS, MEETING_SECS, MEETING_TTL, MAX_INVITES, GRAB_RADIUS,
+  EMOTES, HATS, SCARVES, hitMeeting, crash,
 } from './sim.js';
 
 const TICK_MS = 50;
@@ -55,7 +56,12 @@ export class RoomLogic {
     this.onActivity = opts.onActivity || null;
   }
 
-  newMountain() { this.seed = randomSeed(); this.terrain = new Terrain(this.seed); }
+  newMountain() {
+    this.seed = randomSeed(); this.terrain = new Terrain(this.seed);
+    this.taken = new Set();   // pickup ids already grabbed this mountain
+    this.meetings = [];       // dropped meeting invites on the slope
+    this.meetN = this.meetN || 0;
+  }
 
   // --- socket lifecycle -------------------------------------------------
   attach(ws) {
@@ -98,6 +104,11 @@ export class RoomLogic {
       case 'bot': if (isHost && this.phase === 'lobby') this.addBot(m.name); return;
       case 'kick': if (isHost && this.phase === 'lobby') this.kick(m.id); return;
       case 'abort': if (isHost && (this.phase === 'run' || this.phase === 'count')) this.toLobby(); return;
+      case 'grab': return this.grab(p, m.id | 0);
+      case 'drop': return this.drop(p);
+      case 'meet': return this.meetHit(p, m.id | 0);
+      case 'emote': return this.emote(p, m.i | 0);
+      case 'look': return this.look(p, m);
       case 'ping': return this.send(ws, { t: 'pong', c: m.c });
     }
   }
@@ -132,6 +143,7 @@ export class RoomLogic {
       if (p.ws && p.ws !== ws) { this.sockets.delete(p.ws); try { p.ws.close(4000, 'replaced'); } catch {} }
       p.ws = ws; p.connected = true;
       if (m.name) p.name = cleanName(m.name);
+      this.setLook(p, m);
     } else {
       const humans = [...this.players.values()].filter(q => !q.bot).length;
       if (this.players.size >= MAX_PLAYERS || humans >= MAX_PLAYERS) {
@@ -141,6 +153,7 @@ export class RoomLogic {
       const id = (typeof m.id === 'string' && /^[a-z0-9]{4,12}$/.test(m.id) && !this.players.has(m.id)) ? m.id : shortId();
       const color = COLORS.includes(m.color) ? m.color : COLORS[this.players.size % COLORS.length];
       p = { id, name: cleanName(m.name), color, bot: false, ws, connected: true, lastPos: 0 };
+      this.setLook(p, m);
       if (this.phase === 'run') {
         p.sk = newSkier(WORLD_W / 2, START_Y, 'wait');
         p.late = true;
@@ -157,7 +170,7 @@ export class RoomLogic {
     this.fixHost();
     this.send(ws, {
       t: 'hello', you: p.id, code: this.code, seed: this.seed, phase: this.phase,
-      x: p.sk.x, y: p.sk.y, st: ST[p.sk.st], late: !!p.late, final: this.final,
+      x: p.sk.x, y: p.sk.y, st: ST[p.sk.st], late: !!p.late, final: this.final, taken: [...this.taken],
     });
     this.sendRoster();
   }
@@ -181,6 +194,8 @@ export class RoomLogic {
     const color = [...counts.entries()].sort((x, y) => x[1] - y[1])[0][0];
     this.players.set(id, {
       id, name: nm, color, bot: true, connected: true,
+      hat: this.rnd() < 0.3 ? 'beanie' : HATS[1 + Math.floor(this.rnd() * (HATS.length - 1))],
+      scarf: this.rnd() < 0.5 ? 'none' : SCARVES[1 + Math.floor(this.rnd() * (SCARVES.length - 1))],
       sk: newSkier(this.freeSpawnX(), START_Y, 'ski'), brain: newBrain(this.rnd),
     });
     this.sendRoster();
@@ -234,6 +249,7 @@ export class RoomLogic {
     const x0 = WORLD_W / 2 - gap * (list.length - 1) / 2;
     const spawns = {};
     list.forEach((p, i) => {
+      p.pto = false; p.invites = 0; p.ptoT = 0; p.boostT = 0;
       p.sk = newSkier(Math.round(x0 + i * gap), START_Y, 'frozen');
       if (p.bot) p.brain = newBrain(this.rnd);
       spawns[p.id] = [p.sk.x, p.sk.y];
@@ -247,7 +263,7 @@ export class RoomLogic {
     this.monster = null; this.endAt = null;
     for (const [id, p] of this.players) {
       if (!p.bot && !p.connected) { this.players.delete(id); continue; }
-      p.late = false;
+      p.late = false; p.pto = false; p.invites = 0; p.ptoT = 0; p.boostT = 0;
       p.sk = newSkier(this.freeSpawnX(), START_Y, 'ski');
     }
     const spawns = {};
@@ -294,11 +310,21 @@ export class RoomLogic {
         if (this.phase !== 'run' && sk.y > LOBBY_WRAP_Y) { sk.y = START_Y; sk.x = this.freeSpawnX(); }
         const cmd = botThink(sk, p.brain, this.terrain, this.rnd, dt);
         if (cmd) steer(sk, cmd);
-        stepSkier(sk, dt, this.terrain);
+        const ev = stepSkier(sk, dt, this.terrain);
         collideSkiers(sk, others, p.id);
+        if ((ev === 'crash' || ev === 'rock') && this.rnd() < 0.12) this.emoteNow(p, this.rnd() < 0.5 ? 3 : 0);
+        this.botExtras(p, others);
       }
     }
 
+    for (const p of all) {
+      if (p.boostT > 0) p.boostT = Math.max(0, p.boostT - dt);
+      if (p.ptoT > 0) p.ptoT = Math.max(0, p.ptoT - dt);
+    }
+    if (this.meetings.length) {
+      for (const mt of this.meetings) mt.age += dt;
+      this.meetings = this.meetings.filter(mt => mt.age < MEETING_TTL);
+    }
     if (this.phase === 'run') this.runMonster(dt);
     if (this.endAt !== null && this.phaseT >= this.endAt) { this.endAt = null; this.finish(); }
 
@@ -362,24 +388,34 @@ export class RoomLogic {
     if (dist > MONSTER.catchupDist) speed *= Math.min(MONSTER.catchupMax, MONSTER.catchup + MONSTER.catchupPerMeal * meals);
     // a little random surging and slacking, re-rolled every ~0.7s
     if ((m.jitterT -= dt) <= 0) { m.jitter = 0.85 + this.rnd() * 0.35; m.jitterT = 0.5 + this.rnd() * 0.5; }
-    speed *= m.jitter * (m.mood === 'hunt' ? 1 : MOOD[m.mood].speed);
+    speed *= m.jitter * (m.mood === 'hunt' ? 1 : m.mood === 'ooo' ? 0.2 : MOOD[m.mood].speed);
 
     // heading: toward the target, plus a weave across it
     let ux = dx / dist, uy = dy / dist;
-    if (m.mood === 'sniff') { ux = m.sniffDir * 0.9; uy = 0.3; }
+    if (m.mood === 'sniff' || m.mood === 'ooo') { ux = m.sniffDir * 0.9; uy = 0.3; }
     else if (dist > 70) {
       const amp = m.mood === 'zigzag' ? 1.4 : 0.45, freq = m.mood === 'zigzag' ? 5 : 2.2;
       const wv = Math.sin(m.age * freq + m.phase) * amp;
       ux += -dy / dist * wv; uy += dx / dist * wv;
       const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
     }
-    const step = m.mood === 'sniff' ? speed * dt : Math.min(dist, speed * dt);
+    const step = (m.mood === 'sniff' || m.mood === 'ooo') ? speed * dt : Math.min(dist, speed * dt);
     m.x = Math.max(0, Math.min(WORLD_W, m.x + ux * step)); m.y += uy * step;
 
     const r2 = MONSTER.eatRadius * MONSTER.eatRadius;
     for (const p of alive) {
       const ex = p.sk.x - m.x, ey = p.sk.y - m.y;
-      if (ex * ex + ey * ey < r2) { this.eat(p, parts.length, alive.length); break; }
+      if (ex * ex + ey * ey >= r2 || p.ptoT > 0) continue;
+      if (p.pto) {
+        // out of office! the yeti is baffled for a moment and you slip away
+        p.pto = false; p.ptoT = PTO_IMMUNE_SECS;
+        m.mood = 'ooo'; m.moodT = 1.4; m.sniffDir = ex >= 0 ? -1 : 1;
+        this.broadcast({ t: 'ev', k: 'pto', pid: p.id });
+        break;
+      }
+      this.eat(p, parts.length, alive.length);
+      if (p.bot && this.rnd() < 0.4) this.emoteNow(p, 1); // "GG"
+      break;
     }
   }
 
@@ -394,6 +430,72 @@ export class RoomLogic {
     if (total > 1 ? aliveAfter <= 1 : aliveAfter <= 0) this.endAt = this.phaseT + 2.2;
   }
 
+  // --- extras: pickups, meeting invites, emotes, cosmetics ---------------------
+  extrasLive() { return this.phase === 'lobby' || this.phase === 'run'; }
+  alive(p) { return p.sk && p.sk.st !== 'eaten' && p.sk.st !== 'wait' && p.sk.st !== 'frozen'; }
+
+  grab(p, id) {
+    if (!this.extrasLive() || !this.alive(p) || this.taken.has(id)) return;
+    const pk = this.terrain.pickupById(id);
+    // the room's copy of your position lags a little, so allow some slack
+    if (!pk || Math.hypot(pk.x - p.sk.x, pk.y - p.sk.y) > (p.bot ? GRAB_RADIUS : 70)) return;
+    this.taken.add(id);
+    if (pk.type === 'coffee') { p.boostT = COFFEE_SECS; if (p.bot) p.sk.boost = COFFEE_SECS; }
+    else if (pk.type === 'pto') p.pto = true;
+    else if (pk.type === 'invite') p.invites = Math.min(MAX_INVITES, (p.invites || 0) + 1);
+    this.broadcast({ t: 'ev', k: 'grab', id, pid: p.id, item: pk.type });
+  }
+
+  drop(p) {
+    if (!this.extrasLive() || !this.alive(p) || !(p.invites > 0)) return;
+    p.invites--;
+    this.meetings.push({ id: ++this.meetN, x: p.sk.x, y: p.sk.y - 8, by: p.id, age: 0 });
+    if (this.meetings.length > 40) this.meetings.shift();
+    this.broadcast({ t: 'ev', k: 'drop', pid: p.id });
+  }
+
+  // someone skied into a dropped invite: it's used up, they're "in a meeting"
+  meetHit(p, id) {
+    const i = this.meetings.findIndex(mt => mt.id === id);
+    if (i < 0) return;
+    const mt = this.meetings[i];
+    if (mt.by === p.id || Math.hypot(mt.x - p.sk.x, mt.y - p.sk.y) > 90) return;
+    this.meetings.splice(i, 1);
+    this.broadcast({ t: 'ev', k: 'meet', pid: p.id, id, by: mt.by });
+  }
+
+  emote(p, i) {
+    const now = this.now();
+    if (now - (p.lastEmote || 0) < 1200) return; // keep the chatter readable
+    this.emoteNow(p, i, now);
+  }
+  emoteNow(p, i, now = this.now()) {
+    if (i < 0 || i >= EMOTES.length) return;
+    p.lastEmote = now;
+    this.broadcast({ t: 'ev', k: 'emote', pid: p.id, i });
+  }
+
+  setLook(p, m) {
+    if (HATS.includes(m.hat)) p.hat = m.hat;
+    if (SCARVES.includes(m.scarf)) p.scarf = m.scarf;
+  }
+  look(p, m) { this.setLook(p, m); this.sendRoster(); }
+
+  botExtras(p, others) {
+    const sk = p.sk;
+    if (!this.extrasLive() || !this.alive(p)) return;
+    for (const pk of this.terrain.pickupsNear(sk.y - GRAB_RADIUS, sk.y + GRAB_RADIUS)) {
+      if (!this.taken.has(pk.id) && Math.hypot(pk.x - sk.x, pk.y - sk.y) < GRAB_RADIUS) this.grab(p, pk.id);
+    }
+    const mt = hitMeeting(sk, this.meetings, p.id);
+    if (mt) { crash(sk, MEETING_SECS); this.meetHit(p, mt.id); }
+    // drop an invite on someone close behind (sometimes)
+    if (p.invites > 0 && this.rnd() < 0.03) {
+      const victim = others.find(o => o.id !== p.id && o.st === 'ski' && o.y < sk.y - 40 && o.y > sk.y - 240 && Math.abs(o.x - sk.x) < 70);
+      if (victim) this.drop(p);
+    }
+  }
+
   // --- output -------------------------------------------------------------
   send(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch {} }
 
@@ -405,6 +507,7 @@ export class RoomLogic {
   sendRoster() {
     const players = [...this.players.values()].map(p => ({
       id: p.id, name: p.name, color: p.color, bot: p.bot, on: p.connected, late: !!p.late,
+      hat: p.hat || 'beanie', scarf: p.scarf || 'none',
     }));
     this.broadcast({ t: 'roster', host: this.hostId, players });
   }
@@ -415,13 +518,15 @@ export class RoomLogic {
       const sk = pl.sk;
       if (sk.st === 'wait') continue;
       const st = sk.st === 'air' && sk.big ? ST.bigair : ST[sk.st];
-      p.push([pl.id, Math.round(sk.x), Math.round(sk.y), sk.d, st]);
+      const flags = (pl.pto ? 1 : 0) | ((pl.boostT > 0 || sk.boost > 0) ? 2 : 0) | (pl.ptoT > 0 ? 4 : 0);
+      p.push([pl.id, Math.round(sk.x), Math.round(sk.y), sk.d, st, flags, pl.invites || 0]);
     }
     const m = this.monster;
     this.broadcast({
       t: 's', k: this.tickN, ph: this.phase, pt: Math.round(this.phaseT * 10) / 10, p,
       m: m ? [Math.round(m.x), Math.round(m.y), m.st === 'eat' ? 1 : 0, m.target, m.st === 'eat' ? 0 : MOODS.indexOf(m.mood)] : null,
       o: this.order, ms: this.missed,
+      mt: this.meetings.map(mt => [mt.id, Math.round(mt.x), Math.round(mt.y), mt.by]),
     });
   }
 }

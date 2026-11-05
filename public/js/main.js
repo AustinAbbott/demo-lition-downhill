@@ -2,6 +2,7 @@
 import {
   Terrain, newSkier, stepSkier, steer, collideSkiers, mulberry32, hash2, MOODS,
   WORLD_W, CHUNK_H, PX_PER_M, START_Y, CLEAR_Y, MONSTER, ST, ST_NAME,
+  ITEM_LABEL, COFFEE_SECS, MEETING_SECS, GRAB_RADIUS, EMOTES, HATS, SCARVES, hitMeeting, crash,
 } from './sim.js';
 import * as S from './sprites.js';
 import { sfx, unlock, isMuted, setMuted } from './audio.js';
@@ -23,6 +24,8 @@ try { myId = sessionStorage.getItem('dd.id'); } catch {}
 if (!myId) { myId = Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('dd.id', myId); } catch {} }
 let myName = ls.get('dd.name', '');
 let myColor = ls.get('dd.color', COLORS[Math.floor(Math.random() * COLORS.length)]);
+let myHat = HATS.includes(ls.get('dd.hat', '')) ? ls.get('dd.hat') : 'beanie';
+let myScarf = SCARVES.includes(ls.get('dd.scarf', '')) ? ls.get('dd.scarf') : 'none';
 
 // ---------------------------------------------------------------------------
 const G = {
@@ -35,6 +38,7 @@ const G = {
   trails: new Map(), banner: null, pops: [],
   camX: WORLD_W / 2 - 400, camY: -200,
   lastSend: 0, lastBeep: 0, eatenSlot: null, resultsDismissed: false,
+  taken: new Set(), pending: new Map(), meetings: [], meetHit: new Set(), bubbles: new Map(), myPto: false, myInv: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -57,7 +61,7 @@ function connect(code, create = false, attempt = 0) {
     ws.onopen = () => {
       retry = 0; $('#conn').hidden = true;
       // only the very first join creates; reconnects rejoin the existing room
-      ws.send(JSON.stringify({ t: 'join', id: myId, name: myName, color: myColor, create: create && !joined }));
+      ws.send(JSON.stringify({ t: 'join', id: myId, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: create && !joined }));
     };
     ws.addEventListener('message', (e) => { if (!joined && e.data.includes('"t":"hello"')) joined = true; });
     ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
@@ -82,7 +86,7 @@ function connectPractice() {
   room.attach(sock);
   G.conn = { send: (o) => room.message(sock, JSON.stringify(o)), close: () => room.detach(sock) };
   G.code = 'SOLO'; G.practice = true;
-  G.conn.send({ t: 'join', id: myId, name: myName, color: myColor, create: true });
+  G.conn.send({ t: 'join', id: myId, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: true });
   for (let i = 0; i < 7; i++) G.conn.send({ t: 'bot' });
 }
 
@@ -104,6 +108,7 @@ function handle(m) {
       G.me = newSkier(m.x, m.y, ST_NAME[m.st] || 'ski');
       G.final = m.final || null;
       G.snaps = [];
+      resetExtras(); G.taken = new Set(m.taken || []);
       enterGame();
       if (m.late) banner('YOU MISSED THE LIFT', "SO YOU'LL DEMO FIRST. ENJOY THE SHOW.", 4000);
       break;
@@ -144,7 +149,7 @@ function onPhase(m) {
   G.phase = m.ph; G.phaseStart = performance.now();
   setSeed(m.seed);
   if (m.spawns) {
-    G.snaps = []; G.trails.clear();
+    G.snaps = []; G.trails.clear(); resetExtras();
     const sp = m.spawns[G.you];
     if (sp) G.me = newSkier(sp[0], sp[1], m.ph === 'count' ? 'frozen' : 'ski');
   }
@@ -175,7 +180,9 @@ function onState(m) {
   G.snaps.push({ at: st, m });
   if (G.snaps.length > 40) G.snaps.shift();
   G.order = m.o; G.missed = m.ms; G.lastPt = m.pt;
+  G.meetings = (m.mt || []).map(([id, x, y, by]) => ({ id, x, y, by }));
   const mine = m.p.find(e => e[0] === G.you);
+  if (mine) { G.myPto = !!(mine[5] & 1); G.myInv = mine[6] | 0; }
   if (G.me) {
     if (mine && mine[4] === ST.eaten && G.me.st !== 'eaten') G.me.st = 'eaten';
     if (!mine && m.ph === 'run' && G.me.st !== 'eaten') G.me.st = 'wait';
@@ -187,7 +194,30 @@ function onState(m) {
 }
 
 function onEvent(m) {
-  if (m.k === 'roar') {
+  if (m.k === 'grab') {
+    G.taken.add(m.id); G.pending.delete(m.id);
+    say(m.pid, ITEM_LABEL[m.item] || '+ITEM', 1400, '#000080');
+    if (m.pid === G.you) {
+      if (m.item === 'coffee') { if (G.me) G.me.boost = COFFEE_SECS; sfx.coffee(); }
+      else if (m.item === 'pto') sfx.pto();
+      else sfx.item();
+    }
+  } else if (m.k === 'drop') {
+    say(m.pid, 'SENDING INVITE...', 1400, '#000080');
+    if (m.pid === G.you) sfx.drop();
+  } else if (m.k === 'meet') {
+    const by = nameOf(m.by);
+    say(m.pid, `IN A MEETING (${by})`, (MEETING_SECS + 0.6) * 1000, '#e63946');
+    if (m.by === G.you) sfx.item();
+  } else if (m.k === 'pto') {
+    const who = m.pid === G.you ? 'YOU ARE' : `${nameOf(m.pid)} IS`;
+    banner(`${who} ON PTO!`, 'THE SCOPE CREEP WILL CIRCLE BACK', 2200);
+    say(m.pid, 'OUT OF OFFICE', 2000, '#2a9d8f');
+    sfx.pto();
+  } else if (m.k === 'emote') {
+    say(m.pid, EMOTES[m.i] || '...', 2200, '#1d1b2f');
+    sfx.emote();
+  } else if (m.k === 'roar') {
     sfx.roar();
     G.shakeUntil = performance.now() + 650;
   } else if (m.k === 'spawn') {
@@ -209,6 +239,13 @@ function onEvent(m) {
   renderPanels(true);
 }
 
+function resetExtras() {
+  G.taken = new Set(); G.pending = new Map(); G.meetings = []; G.meetHit = new Set();
+  G.bubbles = new Map(); G.myPto = false; G.myInv = 0;
+}
+// a speech bubble over a skier's head
+function say(pid, text, ms, color) { G.bubbles.set(pid, { text, until: performance.now() + ms, color }); }
+
 function banner(text, sub, ms) { G.banner = { text, sub, until: performance.now() + ms, at: performance.now() }; }
 function toast(msg) { const t = $('#conn'); t.textContent = msg; t.hidden = false; }
 
@@ -219,6 +256,7 @@ const held = { L: 0, R: 0 };
 const KEYS = {
   ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', ArrowDown: 'D', KeyS: 'D',
   Space: 'J', ArrowUp: 'J', KeyW: 'J', KeyR: 'reset', KeyM: 'music',
+  KeyE: 'drop', Digit1: 'e0', Digit2: 'e1', Digit3: 'e2', Digit4: 'e3',
 };
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
@@ -229,6 +267,8 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (c === 'reset') { lobbyReset(); return; }
   if (c === 'music') { toggleMusic(); return; }
+  if (c === 'drop') { dropInvite(); return; }
+  if (c[0] === 'e') { emote(+c[1]); return; }
   queue.push(c);
   if (c === 'L' || c === 'R') held[c] = performance.now() + 230;
 });
@@ -238,10 +278,20 @@ addEventListener('pointerdown', unlock, { passive: true });
 
 for (const b of document.querySelectorAll('#touch button')) {
   const c = b.dataset.cmd;
-  b.addEventListener('pointerdown', (e) => { e.preventDefault(); unlock(); queue.push(c); if (c === 'L' || c === 'R') held[c] = performance.now() + 230; });
+  b.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); unlock();
+    if (c === 'drop') return dropInvite();
+    if (c === 'talk') { G.talkI = ((G.talkI ?? -1) + 1) % EMOTES.length; return emote(G.talkI); }
+    queue.push(c); if (c === 'L' || c === 'R') held[c] = performance.now() + 230;
+  });
   const up = () => { if (c === 'L' || c === 'R') held[c] = 0; };
   b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up);
 }
+
+function dropInvite() {
+  if (G.conn && G.myInv > 0 && G.me && G.me.st !== 'eaten' && G.me.st !== 'wait') G.conn.send({ t: 'drop' });
+}
+function emote(i) { if (G.conn && G.me) G.conn.send({ t: 'emote', i }); }
 
 function lobbyReset() {
   if (!G.me || (G.phase !== 'lobby' && G.phase !== 'over')) return;
@@ -276,6 +326,16 @@ function stepMe(dt) {
   else if (ev === 'mogul') sfx.mogul();
   else if (ev === 'ramp') sfx.ramp();
   if (G.view) { if (collideSkiers(me, G.view.players, G.you)) sfx.bump(); }
+  if (G.phase === 'lobby' || G.phase === 'run') {
+    // a grab the room didn't confirm (someone beat you to it, or lag) frees up again after a moment
+    for (const [id, at] of G.pending) if (now - at > 1200) G.pending.delete(id);
+    for (const pk of G.terrain.pickupsNear(me.y - GRAB_RADIUS, me.y + GRAB_RADIUS)) {
+      if (G.taken.has(pk.id) || G.pending.has(pk.id)) continue;
+      if (Math.hypot(pk.x - me.x, pk.y - me.y) < GRAB_RADIUS) { G.pending.set(pk.id, now); G.conn.send({ t: 'grab', id: pk.id }); }
+    }
+    const mt = hitMeeting(me, G.meetings.filter(x => !G.meetHit.has(x.id)), G.you);
+    if (mt) { G.meetHit.add(mt.id); crash(me, MEETING_SECS); sfx.meeting(); G.conn.send({ t: 'meet', id: mt.id }); }
+  }
 }
 
 function stCode(sk) {
@@ -316,7 +376,7 @@ function viewState(now) {
       const ff = moving ? f : Math.min(1, f);  // don't slide crashed/eaten skiers forward
       x = p[1] + (e[1] - p[1]) * ff; y = p[2] + (e[2] - p[2]) * ff;
     }
-    players.push({ id: e[0], x, y, d: e[3], st: ST_NAME[e[4]] });
+    players.push({ id: e[0], x, y, d: e[3], st: ST_NAME[e[4]], flags: e[5] | 0 });
   }
   let monster = null;
   const ma = a.m.m, mb = b.m.m;
@@ -347,8 +407,8 @@ resize();
 const sx = (x) => Math.round((x - G.camX) * Z);
 const sy = (y) => Math.round((y - G.camY) * Z);
 
-function sprite(img, x, y, alpha = 1) {
-  const w = img.width * Z, h = img.height * Z;
+function sprite(img, x, y, alpha = 1, scale = 1) {
+  const w = img.width * Z * scale, h = img.height * Z * scale;
   if (alpha !== 1) g.globalAlpha = alpha;
   g.drawImage(img, Math.round(sx(x) - w / 2), Math.round(sy(y) - h), w, h);
   if (alpha !== 1) g.globalAlpha = 1;
@@ -399,7 +459,8 @@ function trackTrail(id, x, y, air) {
 // (lobby, after being eaten, results) the camera zooms out to show the pack.
 function overviewActive() {
   if (!G.conn || G.hostId !== G.you || !G.view) return false;
-  if (G.phase === 'lobby' || G.phase === 'over') return true;
+  if (G.phase === 'lobby') return !G.practice; // practice has no audience: keep your own camera to warm up
+  if (G.phase === 'over') return true;
   return G.phase === 'run' && !!G.me && (G.me.st === 'eaten' || G.me.st === 'wait');
 }
 
@@ -571,13 +632,19 @@ function render(now, dt) {
   for (let c = Math.floor(top / CHUNK_H); c <= Math.floor((bot + 50) / CHUNK_H); c++) {
     for (const o of edgeTrees(c)) if (o.y > top && o.y < bot + 50 && o.x > G.camX - 40 && o.x < G.camX + VW + 40) items.push({ y: o.y, k: 'ob', o });
   }
+  if (G.phase === 'lobby' || G.phase === 'run' || G.phase === 'count') {
+    for (const pk of G.terrain.pickupsNear(top, bot + 30)) {
+      if (!G.taken.has(pk.id) && !G.pending.has(pk.id) && pk.x > G.camX - 30 && pk.x < G.camX + VW + 30) items.push({ y: pk.y, k: 'pk', o: pk });
+    }
+  }
+  for (const mt of G.meetings) if (mt.y > top && mt.y < bot + 30 && !G.meetHit.has(mt.id)) items.push({ y: mt.y, k: 'mt', o: mt });
   const view = G.view;
   const skiers = [];
   if (view) for (const p of view.players) {
     if (p.id === G.you || p.st === 'eaten' || p.st === 'wait') continue;
     skiers.push(p);
   }
-  if (G.me && G.conn && G.me.st !== 'eaten' && G.me.st !== 'wait') skiers.push({ id: G.you, x: G.me.x, y: G.me.y, d: G.me.d, st: G.me.st === 'air' && G.me.big ? 'bigair' : G.me.st, me: true });
+  if (G.me && G.conn && G.me.st !== 'eaten' && G.me.st !== 'wait') skiers.push({ id: G.you, x: G.me.x, y: G.me.y, d: G.me.d, st: G.me.st === 'air' && G.me.big ? 'bigair' : G.me.st, me: true, flags: (G.myPto ? 1 : 0) | (G.me.boost > 0 ? 2 : 0) });
   for (const p of skiers) {
     trackTrail(p.id, p.x, p.y, p.st === 'air' || p.st === 'bigair');
     items.push({ y: p.y, k: 'sk', p });
@@ -592,7 +659,18 @@ function render(now, dt) {
     if (it.k === 'ob') {
       const img = S.obstacle(it.o.type, it.o.v);
       if (img) sprite(img, it.o.x, it.o.y);
-    } else if (it.k === 'sk') drawSkier(it.p, now);
+    } else if (it.k === 'pk') {
+      // pickups bob and glint so they read as "grab me"
+      const o = it.o, bob = Math.sin(now / 220 + o.id) * 2.5;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 260 + o.id);
+      g.fillStyle = `rgba(255,214,10,${0.18 + 0.17 * pulse})`;  // warm glow so it stands out on the snow
+      g.beginPath(); g.ellipse(sx(o.x), sy(o.y - 9 + bob), (13 + pulse * 2) * Z, (11 + pulse * 2) * Z, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(40,60,110,0.2)';
+      g.beginPath(); g.ellipse(sx(o.x), sy(o.y + 1), 8 * Z, 2.5 * Z, 0, 0, Math.PI * 2); g.fill();
+      sprite(S.icon(o.type), o.x, o.y - 3 + bob, 1, 1.6);
+      if (Math.floor(now / 160 + o.id) % 6 === 0) { g.fillStyle = '#ffffff'; g.fillRect(sx(o.x + 8), sy(o.y - 22 + bob), Z, Z * 3); g.fillRect(sx(o.x + 7), sy(o.y - 21 + bob), Z * 3, Z); }
+    } else if (it.k === 'mt') sprite(S.meetingSign(), it.o.x, it.o.y, 1, 1.4);
+    else if (it.k === 'sk') drawSkier(it.p, now);
     else drawCreep(it.m, now);
   }
 
@@ -612,7 +690,15 @@ function render(now, dt) {
     const yy = t.y - row * 9 * ts;
     if (row) { g.fillStyle = 'rgba(29,27,47,0.35)'; g.fillRect(Math.round(sx(t.p.x)), yy + 8 * ts, Z, t.y - yy); }
     S.drawText(g, t.label, t.x, yy, ts, t.p.me ? '#ffd60a' : '#ffffff', '#1d1b2f');
+    // PTO in hand: a tiny island next to the name
+    if (t.p.flags & 1) {
+      const ic = S.icon('pto'), w = Math.round(ic.width * Z * 0.6), h = Math.round(ic.height * Z * 0.6);
+      g.drawImage(ic, t.x + t.w + 2 * ts, yy - 1 * ts, w, h);
+    }
+    const bub = G.bubbles.get(t.p.id);
+    if (bub && now < bub.until) drawSpeech(sx(t.p.x), yy - 3 * ts, bub.text, bub.color, ts);
   }
+  for (const [pid, bub] of G.bubbles) if (now >= bub.until) G.bubbles.delete(pid);
 
   // floating sticky-note numbers when someone's eaten
   G.pops = G.pops.filter(p => now - p.at < 1600);
@@ -647,8 +733,14 @@ function drawStartLine() {
 }
 
 const SPIN = [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1];
+function lookOf(p) {
+  if (p.me) return [myHat, myScarf];
+  const r = G.roster.get(p.id);
+  return [r && r.hat || 'beanie', r && r.scarf || 'none'];
+}
 function drawSkier(p, now) {
   const color = p.me ? myColor : colorOf(p.id);
+  const [hat, scarf] = lookOf(p);
   let pose = p.d, lift = 0;
   if (p.st === 'crash') pose = 'crash';
   else if (p.st === 'frozen') pose = 0;
@@ -658,8 +750,16 @@ function drawSkier(p, now) {
     g.fillStyle = 'rgba(40,60,110,0.22)';
     g.beginPath(); g.ellipse(sx(p.x), sy(p.y), 7 * Z, 2.5 * Z, 0, 0, Math.PI * 2); g.fill();
   }
-  const img = S.skier(pose, color);
+  const img = S.skier(pose, color, hat, scarf);
   const blink = p.me && G.me.inv > 0 && Math.floor(now / 80) % 2 === 0;
+  if (p.flags & 2) {
+    // caffeinated: little coffee-coloured speed streaks trailing uphill
+    g.fillStyle = 'rgba(107,62,31,0.55)';
+    for (let i = 0; i < 3; i++) {
+      const ph = (now / 90 + i * 3) % 9;
+      g.fillRect(sx(p.x - 5 + i * 5), sy(p.y - 22 - ph * 2), Z, Math.round(6 * Z));
+    }
+  }
   sprite(img, p.x, p.y - lift, blink ? 0.35 : 1);
   if (p.me && (G.phase === 'lobby' || G.phase === 'count')) {
     // little bobbing arrow so you can find yourself in a crowd
@@ -687,18 +787,25 @@ function drawCreep(m, now) {
   const jolt = m.mood === 'roar' ? Math.round(Math.sin(now / 30) * 1.5 * Z) : 0;
   g.drawImage(img, Math.round(sx(m.x) - w / 2) + jolt, Math.round(sy(m.y + 10) - h - bounce), w, h);
   // speech bubble so everyone can tell what mood it's in
-  const say = { sniff: '?', lunge: '!', roar: 'ROAAAR!', fickle: 'ACTUALLY...' }[m.mood];
-  if (say && !m.eat) {
-    const ts = Math.max(1, Math.round(Z)) * (say.length === 1 ? 2 : 1);
-    const tw = S.textWidth(say, ts), pad = 3 * ts;
-    const bx = Math.round(sx(m.x) + w * 0.18), by = Math.round(sy(m.y + 10) - h - 4 * Z - 7 * ts - pad * 2);
-    g.fillStyle = '#ffffff'; g.fillRect(bx, by, tw + pad * 2, 7 * ts + pad * 2);
-    g.fillStyle = '#2c3445';
-    g.fillRect(bx, by, tw + pad * 2, Z); g.fillRect(bx, by + 7 * ts + pad * 2 - Z, tw + pad * 2, Z);
-    g.fillRect(bx, by, Z, 7 * ts + pad * 2); g.fillRect(bx + tw + pad * 2 - Z, by, Z, 7 * ts + pad * 2);
-    g.fillStyle = '#ffffff'; g.fillRect(bx + 2 * Z, by + 7 * ts + pad * 2 - Z, 3 * Z, 3 * Z); // tail
-    S.drawText(g, say, bx + pad, by + pad, ts, m.mood === 'roar' || m.mood === 'lunge' ? '#e63946' : '#2c3445');
+  const line = { sniff: '?', lunge: '!', roar: 'ROAAAR!', fickle: 'ACTUALLY...', ooo: 'OUT OF OFFICE?!' }[m.mood];
+  if (line && !m.eat) {
+    const ts = Math.max(1, Math.round(Z)) * (line.length === 1 ? 2 : 1);
+    drawSpeech(Math.round(sx(m.x) + w * 0.18), Math.round(sy(m.y + 10) - h - 4 * Z), line,
+      m.mood === 'roar' || m.mood === 'lunge' ? '#e63946' : '#2c3445', ts, false);
   }
+}
+
+// White speech bubble with an outline and a little tail. (x, y) = tail tip;
+// centred over x unless `centred` is false (then it hangs to the right).
+function drawSpeech(x, y, text, color, ts, centred = true) {
+  const tw = S.textWidth(text, ts), pad = 3 * ts, bw = tw + pad * 2, bh = 7 * ts + pad * 2;
+  const o = Math.max(1, Math.round(ts / 2));
+  const bx = Math.round(centred ? x - bw / 2 : x), by = Math.round(y - bh - 3 * o);
+  g.fillStyle = '#2c3445'; g.fillRect(bx - o, by - o, bw + 2 * o, bh + 2 * o);
+  g.fillStyle = '#ffffff'; g.fillRect(bx, by, bw, bh);
+  const tx = centred ? Math.round(x - o) : bx + 2 * o;
+  g.fillRect(tx, by + bh, 2 * o, 3 * o);
+  S.drawText(g, text, bx + pad, by + pad, ts, color || '#2c3445');
 }
 
 // bottom edge for overlay text: on phones, stay above the touch buttons
@@ -793,6 +900,24 @@ function drawOverlay(now) {
     S.drawText(g, label, x, y, small, '#1d1b2f', '#ffffff');
     S.drawText(g, `${metres(me.y)}M`, x, y + 10 * small, big, me.st === 'eaten' ? '#5a4fcf' : '#000080', '#ffffff');
   }
+  if ((G.phase === 'run' || G.phase === 'lobby') && me && me.st !== 'eaten' && me.st !== 'wait' && (G.myPto || G.myInv > 0)) drawInventory(ts);
+}
+
+// what you're holding: PTO (saves you once) and meeting invites (E to drop)
+function drawInventory(ts) {
+  const dpr = cv.width / innerWidth, sc = 2 * ts;
+  const x0 = 14 * dpr;
+  const y = innerWidth <= 700 ? cv.height * 0.42 - 34 * dpr : cv.height - 14 * dpr - 7 * 3 * ts - 10 * ts - 40 * dpr;
+  let x = x0;
+  const slot = (type, label) => {
+    const ic = S.icon(type);
+    g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(x - 2 * ts, y - 2 * ts, ic.width * sc + 4 * ts, ic.height * sc + 4 * ts);
+    g.drawImage(ic, x, y, ic.width * sc, ic.height * sc);
+    S.drawText(g, label, x, y + ic.height * sc + 4 * ts, ts, '#1d1b2f', '#ffffff');
+    x += ic.width * sc + 14 * ts;
+  };
+  if (G.myPto) slot('pto', 'PTO');
+  if (G.myInv > 0) slot('invite', `x${G.myInv} ${innerWidth <= 700 ? 'TAP' : 'E'}`);
 }
 
 function drawMinimap(ts) {
@@ -999,6 +1124,20 @@ $('#add-bot').onclick = () => {
 };
 $('#bot-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#add-bot').click(); });
 $('#start').onclick = () => { $('#start').blur(); G.conn.send({ t: 'start' }); };
+// cosmetics: picked in the lobby, remembered in this browser
+const HAT_NAMES = { beanie: 'Beanie (classic)', cowboy: 'Cowboy', tophat: 'Top hat', crown: 'Crown', party: 'Party hat', viking: 'Viking', propeller: 'Propeller cap', chef: 'Chef' };
+const SCARF_NAMES = { none: 'None', red: 'Candy cane', gold: 'Gold', mint: 'Mint', navy: 'Navy' };
+for (const [sel, list, names, cur] of [[$('#hat'), HATS, HAT_NAMES, myHat], [$('#scarf'), SCARVES, SCARF_NAMES, myScarf]]) {
+  for (const v of list) { const o = document.createElement('option'); o.value = v; o.textContent = names[v]; sel.append(o); }
+  sel.value = cur;
+}
+const sendLook = () => {
+  myHat = $('#hat').value; myScarf = $('#scarf').value;
+  ls.set('dd.hat', myHat); ls.set('dd.scarf', myScarf);
+  if (G.conn) G.conn.send({ t: 'look', hat: myHat, scarf: myScarf });
+  $('#hat').blur(); $('#scarf').blur();
+};
+$('#hat').onchange = sendLook; $('#scarf').onchange = sendLook;
 $('#abort').onclick = () => { if (confirm('Abort this round and go back to the lobby?')) G.conn.send({ t: 'abort' }); };
 $('#again').onclick = () => G.conn.send({ t: 'lobby' });
 $('#close-results').onclick = () => { $('#results').hidden = true; G.resultsDismissed = true; renderPanels(true); };

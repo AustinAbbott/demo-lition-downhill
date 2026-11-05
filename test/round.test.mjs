@@ -69,6 +69,66 @@ console.log('12-skier round durations (s):', durations.map(d => d.toFixed(1)).jo
   console.log('room code checks ok');
 }
 
+// extras: pickups are server-checked, PTO saves you once, invites trip others, emotes rate-limit
+{
+  const room = new RoomLogic('XTRA', { now: () => fakeNow });
+  const box = (arr) => ({ send: (s) => arr.push(JSON.parse(s)), close() {} });
+  const a = [], b = [];
+  const wa = box(a), wb = box(b);
+  room.attach(wa); room.attach(wb); clearInterval(room.timer);
+  room.message(wa, JSON.stringify({ t: 'join', name: 'Ann', id: 'ann001', create: true, hat: 'crown', scarf: 'gold' }));
+  room.message(wb, JSON.stringify({ t: 'join', name: 'Bo', id: 'bo0001', hat: 'nonsense' }));
+  const ann = room.players.get('ann001'), bo = room.players.get('bo0001');
+  assert.equal(ann.hat, 'crown'); assert.equal(ann.scarf, 'gold'); assert.equal(bo.hat, undefined, 'bad hat ignored');
+  // find a pickup of each type on this mountain
+  const find = (type) => { for (let c = 1; c < 200; c++) for (const pk of room.terrain.pickups(c)) if (pk.type === type && !room.taken.has(pk.id)) return pk; };
+  const inv = find('invite');
+  room.message(wa, JSON.stringify({ t: 'grab', id: inv.id }));
+  assert.ok(!room.taken.has(inv.id), 'grab from far away is refused');
+  ann.sk.x = inv.x; ann.sk.y = inv.y;
+  room.message(wa, JSON.stringify({ t: 'grab', id: inv.id }));
+  room.message(wb, JSON.stringify({ t: 'grab', id: inv.id }));
+  assert.equal(ann.invites, 1); assert.equal(bo.invites || 0, 0, 'only one person gets a pickup');
+  // drop it; Bo skis into it
+  room.message(wa, JSON.stringify({ t: 'drop' }));
+  assert.equal(room.meetings.length, 1); assert.equal(ann.invites, 0);
+  const mt = room.meetings[0];
+  room.message(wa, JSON.stringify({ t: 'meet', id: mt.id }));
+  assert.equal(room.meetings.length, 1, "you can't trip on your own invite");
+  bo.sk.x = mt.x; bo.sk.y = mt.y;
+  room.message(wb, JSON.stringify({ t: 'meet', id: mt.id }));
+  assert.equal(room.meetings.length, 0, 'invite used up');
+  assert.ok(b.some(m => m.t === 'ev' && m.k === 'meet' && m.pid === 'bo0001'));
+  // PTO: the yeti catches Bo once and is foiled
+  const pto = find('pto'); bo.sk.x = pto.x; bo.sk.y = pto.y;
+  room.message(wb, JSON.stringify({ t: 'grab', id: pto.id }));
+  assert.equal(bo.pto, true);
+  room.phase = 'run'; room.phaseT = 99; ann.sk.y = bo.sk.y + 2000;
+  room.monster = { x: bo.sk.x, y: bo.sk.y - 5, st: 'hunt', t: 0, age: 0, target: bo.id, mood: 'hunt', moodT: 0, nextMood: 99, sniffDir: 1, jitter: 1, jitterT: 9, phase: 0 };
+  room.runMonster(0.05);
+  assert.equal(bo.sk.st !== 'eaten', true, 'PTO saved Bo'); assert.equal(bo.pto, false); assert.equal(room.monster.mood, 'ooo');
+  assert.ok(a.some(m => m.t === 'ev' && m.k === 'pto'));
+  // immune for a moment, then fair game
+  room.monster.x = bo.sk.x; room.monster.y = bo.sk.y; room.monster.mood = 'hunt';
+  room.runMonster(0.05);
+  assert.notEqual(bo.sk.st, 'eaten', 'grace period after PTO');
+  bo.ptoT = 0; room.monster.x = bo.sk.x; room.monster.y = bo.sk.y;
+  room.runMonster(0.05);
+  assert.equal(bo.sk.st, 'eaten');
+  // coffee: flagged as boosted in the state
+  const cof = find('coffee'); ann.sk.x = cof.x; ann.sk.y = cof.y; room.phase = 'lobby';
+  room.message(wa, JSON.stringify({ t: 'grab', id: cof.id }));
+  assert.ok(ann.boostT > 0);
+  // emotes are rate-limited
+  const before = a.filter(m => m.k === 'emote').length;
+  room.message(wa, JSON.stringify({ t: 'emote', i: 1 }));
+  room.message(wa, JSON.stringify({ t: 'emote', i: 2 }));
+  fakeNow += 1500;
+  room.message(wa, JSON.stringify({ t: 'emote', i: 3 }));
+  assert.equal(a.filter(m => m.k === 'emote').length - before, 2);
+  console.log('extras checks ok');
+}
+
 // solo round: monster eats you and it ends
 {
   const { over } = runRound(0);

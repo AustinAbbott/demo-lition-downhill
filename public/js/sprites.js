@@ -37,7 +37,7 @@ export function shade(hex, f) {
 
 // --- skiers -------------------------------------------------------------------
 const BODY = [
-  '.....ww.....',
+  '.....WW.....',
   '....hhhh....',
   '...hhhhhh...',
   '...kooook...',
@@ -76,22 +76,147 @@ const CRASH = [
   '...kk.......G.....',
 ];
 
-export function skier(pose, color) {
+// --- cosmetics: hats sit on the head (their bottom row lands just above the
+// goggles); scarves wrap the neck with a tail hanging down -------------------------
+const HAT_ART = {
+  cowboy: { pal: { b: '#8b5a2b', B: '#a9713a', k: '#3d2614' }, rows: [
+    '....bbbb....',
+    '...bBBBBb...',
+    '...bkkkkb...',
+    'bbbbbbbbbbbb'] },
+  tophat: { pal: { k: '#1d1b2f', K: '#34304f', r: '#e63946' }, rows: [
+    '...kkkkkk...',
+    '...kKKKKk...',
+    '...kKKKKk...',
+    '...krrrrk...',
+    '.kkkkkkkkkk.'] },
+  crown: { pal: { y: '#ffd23f', Y: '#d99a00', r: '#e63946', b: '#4cc9f0' }, rows: [
+    '..y..yy..y..',
+    '..yyyyyyyy..',
+    '..yrybbyry..',
+    '..YYYYYYYY..'] },
+  party: { pal: { p: '#9b5de5', Y: '#ffd60a', w: '#ffffff' }, rows: [
+    '.....ww.....',
+    '.....pp.....',
+    '....pYYp....',
+    '....pppp....',
+    '...pYYYYp...',
+    '..pppppppp..'] },
+  viking: { pal: { g: '#9aa5b1', G: '#6b7785', w: '#f1e3c6' }, rows: [
+    'w..........w',
+    'w...gggg...w',
+    'ww.gGGGGg.ww',
+    '.wggggggggw.'] },
+  propeller: { pal: { r: '#e63946', b: '#457b9d', y: '#ffd60a', g: '#2a9d8f', k: '#1d1b2f' }, rows: [
+    'rrrr.kk.bbbb',
+    '.....kk.....',
+    '...yyyyyy...',
+    '..yrrbbggy..',
+    '..yyyyyyyy..'] },
+  chef: { pal: { w: '#ffffff', W: '#d6dde6' }, rows: [
+    '...wwwwww...',
+    '..wwWwwWww..',
+    '..wwwwwwww..',
+    '...wWwwWw...',
+    '...wwwwww...',
+    '...WWWWWW...'] },
+};
+const SCARF_COL = { red: '#e63946', gold: '#ffb703', mint: '#2ec4b6', navy: '#1d3557' };
+const HAT_HEADROOM = 4; // extra rows above the base sprite for tall hats
+
+function withScarf(rows) {
+  const r = rows.slice();
+  const put = (i, col, ch) => { r[i] = r[i].slice(0, col) + ch + r[i].slice(col + 1); };
+  r[5] = '...SqSqSq...';
+  put(6, 8, 'S'); put(7, 8, 'q'); put(8, 8, 'S'); // tail hanging over the jacket
+  return r;
+}
+
+export function skier(pose, color, hat = 'beanie', scarf = 'none') {
   // pose: -3..3 for headings, 'crash'
-  const key = `sk|${pose}|${color}`;
+  const key = `sk|${pose}|${color}|${hat}|${scarf}`;
   let s = cache.get(key);
   if (s) return s;
+  const bare = hat !== 'beanie' && HAT_ART[hat];
   const pal = {
-    w: '#ffffff', h: color, c: color, d: shade(color, -0.35), k: '#1d1b2f', o: '#7ad7f0',
+    w: '#ffffff', W: bare ? null : '#ffffff', h: bare ? null : color, c: color, d: shade(color, -0.35), k: '#1d1b2f', o: '#7ad7f0',
     s: '#f1c27d', p: '#34344a', g: '#f4a020', G: '#b8741a', l: '#6b6b7b',
+    S: SCARF_COL[scarf] || null, q: '#ffffff',
   };
-  if (pose === 'crash') s = fromRows(CRASH, pal);
-  else {
+  if (pose === 'crash') {
+    s = fromRows(CRASH, { ...pal, h: color, W: '#ffffff' }); // the hat fell off in the crash
+  } else {
     const a = Math.abs(pose);
-    const rows = (a >= 2 ? BODY_TURNED : BODY).concat(SKIS[a]);
-    s = fromRows(rows, pal);
-    if (pose < 0) s = mirror(s);
+    let rows = (a >= 2 ? BODY_TURNED : BODY).concat(SKIS[a]);
+    if (SCARF_COL[scarf]) rows = withScarf(rows);
+    let body = fromRows(rows, pal);
+    if (pose < 0) body = mirror(body);
+    // compose with headroom so the anchor (bottom-centre) doesn't move
+    s = canvas(14, body.height + HAT_HEADROOM);
+    const g = s.getContext('2d');
+    g.drawImage(body, 1, HAT_HEADROOM);
+    if (bare) {
+      const art = HAT_ART[hat];
+      const hatImg = fromRows(art.rows, art.pal);
+      g.drawImage(hatImg, 1, HAT_HEADROOM + 3 - art.rows.length);
+    }
   }
+  cache.set(key, s);
+  return s;
+}
+
+// --- pickups ---------------------------------------------------------------------
+const ICON_ART = {
+  coffee: { pal: { s: '#b8c4d6', k: '#1d1b2f', b: '#6b3e1f', w: '#ffffff', r: '#e63946' }, rows: [
+    '.....s..s...',
+    '....s..s....',
+    '.....s..s...',
+    '..kkkkkkkk..',
+    '..kbbbbbbkkk',
+    '..kwwwwwwk.k',
+    '..kwrrrrwkkk',
+    '..kwwwwwwk..',
+    '...kwwwwk...',
+    '....kkkk....'] },
+  pto: { pal: { g: '#40b85c', G: '#1b7a3c', t: '#8b5a2b', y: '#f4d58d', b: '#4cc9f0' }, rows: [
+    '...gg.gg....',
+    '..gGggGgg...',
+    '.gg..t..gg..',
+    '.....t......',
+    '......t.....',
+    '......t.....',
+    '.....t......',
+    '..yyyyyyyy..',
+    '.yyyyyyyyyy.',
+    'bbbbbbbbbbbb'] },
+  invite: { pal: { k: '#1d1b2f', r: '#e63946', w: '#ffffff', g: '#9aa5b1' }, rows: [
+    '..k.....k...',
+    '.rrrrrrrrrr.',
+    '.rrrrrrrrrr.',
+    '.wwwwwwwwww.',
+    '.wggwggwggw.',
+    '.wwwwwwwwww.',
+    '.wggwggwrrw.',
+    '.wwwwwwwwww.',
+    '.kkkkkkkkkk.'] },
+};
+export function icon(type) {
+  const key = `ic|${type}`;
+  let s = cache.get(key);
+  if (!s) { const a = ICON_ART[type]; s = fromRows(a.rows, a.pal); cache.set(key, s); }
+  return s;
+}
+// A dropped meeting invite on the slope: the calendar on a little easel.
+export function meetingSign() {
+  const key = 'meeting';
+  let s = cache.get(key);
+  if (s) return s;
+  s = canvas(16, 18);
+  const g = s.getContext('2d');
+  g.drawImage(icon('invite'), 2, 0);
+  g.fillStyle = '#8b5a2b';
+  g.fillRect(4, 9, 1, 9); g.fillRect(11, 9, 1, 9); g.fillRect(7, 9, 2, 7);
+  g.fillStyle = '#5c3a20'; g.fillRect(3, 17, 3, 1); g.fillRect(10, 17, 3, 1);
   cache.set(key, s);
   return s;
 }

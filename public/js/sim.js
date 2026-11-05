@@ -40,7 +40,7 @@ export const MONSTER = {
 };
 // Moods make it erratic. Between moods it hunts (with a wobbly weave);
 // every few seconds it rolls a new one. `w` = pick weight, `secs` = duration.
-export const MOODS = ['hunt', 'lunge', 'sniff', 'zigzag', 'roar', 'fickle'];
+export const MOODS = ['hunt', 'lunge', 'sniff', 'zigzag', 'roar', 'fickle', 'ooo']; // 'ooo' = foiled by PTO
 export const MOOD = {
   lunge:  { w: 25, secs: 0.9, speed: 1.75 },        // sudden burst when it's close
   sniff:  { w: 16, secs: 1.3, speed: 0.25 },        // distracted by a tree; wanders sideways
@@ -59,6 +59,17 @@ export function monsterSpeed(age, meals) {
 export function monsterChew(meals) {
   return Math.max(MONSTER.eatTimeMin, MONSTER.eatTime - MONSTER.eatTimeStep * meals);
 }
+
+// --- extras: pickups, emotes, cosmetics -------------------------------------
+export const ITEMS = { coffee: 45, invite: 35, pto: 20 };   // pick weights
+export const ITEM_LABEL = { coffee: '+COFFEE', invite: '+MEETING INVITE', pto: '+PTO' };
+export const COFFEE_SECS = 3, COFFEE_BOOST = 1.35;         // speed burst
+export const PTO_IMMUNE_SECS = 2.5;                         // grace after PTO saves you
+export const MEETING_SECS = 1.6;                            // stuck "in a meeting"
+export const MEETING_TTL = 25, MAX_INVITES = 2, GRAB_RADIUS = 16;
+export const EMOTES = ['SORRY!', 'GG', 'HI!', 'YIKES!'];
+export const HATS = ['beanie', 'cowboy', 'tophat', 'crown', 'party', 'viking', 'propeller', 'chef'];
+export const SCARVES = ['none', 'red', 'gold', 'mint', 'navy'];
 
 // Status codes on the wire.
 export const ST = { ski: 0, crash: 1, air: 2, bigair: 3, frozen: 4, eaten: 5, wait: 6 };
@@ -153,6 +164,38 @@ export class Terrain {
     return ch;
   }
 
+  // Pickups: same for every client (seeded), ids are stable numbers. Kept clear
+  // of obstacles. Roughly one per 32 m band, none in the first band.
+  pickups(c) {
+    this.pk = this.pk || new Map();
+    let list = this.pk.get(c);
+    if (list) return list;
+    list = [];
+    if (c >= 1) {
+      const rng = mulberry32(hash2(this.seed ^ 0x5eed1e, c));
+      const n = (rng() < 0.8 ? 1 : 0) + (rng() < 0.25 ? 1 : 0);
+      const obs = this.near(c * CHUNK_H - 50, (c + 1) * CHUNK_H + 50);
+      for (let i = 0; i < n; i++) {
+        let r = rng() * 100, type = 'coffee';
+        for (const [t, w] of Object.entries(ITEMS)) { if ((r -= w) < 0) { type = t; break; } }
+        for (let tries = 0; tries < 8; tries++) {
+          const x = Math.round(80 + rng() * (WORLD_W - 160)), y = Math.round(c * CHUNK_H + rng() * CHUNK_H);
+          if (obs.every(o => Math.hypot(o.x - x, o.y - y) > OB[o.type].r + 24)) { list.push({ id: c * 4 + i, type, x, y }); break; }
+        }
+      }
+    }
+    if (this.pk.size > 300) this.pk.clear();
+    this.pk.set(c, list);
+    return list;
+  }
+  pickupsNear(y0, y1, out = []) {
+    for (let c = Math.floor(y0 / CHUNK_H); c <= Math.floor(y1 / CHUNK_H); c++) {
+      for (const p of this.pickups(c)) if (p.y >= y0 && p.y <= y1) out.push(p);
+    }
+    return out;
+  }
+  pickupById(id) { return this.pickups(Math.floor(id / 4)).find(p => p.id === id) || null; }
+
   // every obstacle whose base lies between y0 and y1
   near(y0, y1, out = []) {
     const c0 = Math.floor(y0 / CHUNK_H), c1 = Math.floor(y1 / CHUNK_H);
@@ -190,6 +233,7 @@ export function stepSkier(sk, dt, terrain) {
   sk.inv = Math.max(0, sk.inv - dt);
   sk.hopCd = Math.max(0, sk.hopCd - dt);
   sk.slowCd = Math.max(0, sk.slowCd - dt);
+  if (sk.boost > 0) sk.boost = Math.max(0, sk.boost - dt);
 
   if (sk.st === 'crash') {
     sk.t -= dt;
@@ -203,9 +247,10 @@ export function stepSkier(sk, dt, terrain) {
     sk.air -= dt;
     if (sk.air <= 0) { sk.st = 'ski'; sk.big = false; sk.inv = Math.max(sk.inv, 0.1); }
   } else {
-    const target = DIR_SPEED[a];
+    const caffeinated = sk.boost > 0;
+    const target = DIR_SPEED[a] * (caffeinated ? COFFEE_BOOST : 1);
     if (a === 3) sk.speed = 0;
-    else if (sk.speed < target) sk.speed = Math.min(target, sk.speed + ACCEL * dt);
+    else if (sk.speed < target) sk.speed = Math.min(target, sk.speed + ACCEL * (caffeinated ? 1.8 : 1) * dt);
     else sk.speed = Math.max(target, sk.speed - DECEL * dt);
   }
 
@@ -295,4 +340,14 @@ export function botThink(sk, brain, terrain, rnd, dt) {
   if (best === sk.d) return null;
   if (best === 0 && Math.abs(sk.d) >= 2) return 'D';
   return best < sk.d ? 'L' : 'R';
+}
+
+// A dropped meeting invite that this skier ran into (not their own; hops clear it).
+export function hitMeeting(sk, meetings, selfId) {
+  if (sk.st !== 'ski' || sk.inv > 0) return null;
+  for (const m of meetings) {
+    if (m.by === selfId) continue;
+    if (Math.hypot(m.x - sk.x, m.y - 4 - sk.y) < 14) return m;
+  }
+  return null;
 }
