@@ -83,4 +83,4 @@ class MiniWS {
   end() { if (this.ended) return; this.ended = true; this.closed = true; this.onclose?.(); }
 }
 
-server.listen(PORT, () => console.log(`Demolition Downhill dev server → http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Demo-lition Downhill dev server → http://localhost:${PORT}`));

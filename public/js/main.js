@@ -698,16 +698,18 @@ function drawLogo() {
   const c = $('#logo'), lg = c.getContext('2d');
   lg.imageSmoothingEnabled = false;
   lg.fillStyle = '#f7fbff'; lg.fillRect(0, 0, c.width, c.height);
-  S.drawText(lg, 'DEMOLITION', 8, 8, 2, '#000080');
-  S.drawText(lg, 'DOWNHILL', 8, 28, 2, '#e63946');
+  // "DEMO" gets the emphasis: it's the whole point
+  S.drawText(lg, 'DEMO', 8, 8, 2, '#e63946');
+  S.drawText(lg, '-LITION', 8 + S.textWidth('DEMO-', 2) - S.textWidth('-', 2), 8, 2, '#000080');
+  S.drawText(lg, 'DOWNHILL', 8, 28, 2, '#000080');
   lg.fillStyle = '#5a4fcf';
   S.drawText(lg, 'WHO DEMOS FIRST?', 8, 50, 1, '#555');
   const sk = S.skier(1, myColor);
-  lg.drawImage(sk, 150, 18, sk.width * 2, sk.height * 2);
+  lg.drawImage(sk, 164, 18, sk.width * 2, sk.height * 2);
   const t = S.obstacle('tree', 2);
-  lg.drawImage(t, 128, 2, t.width, t.height);
+  lg.drawImage(t, 144, 2, t.width, t.height);
   const cr = S.creep(performance.now() / 1000, [-1, 0.6], 0.6);
-  lg.drawImage(cr, 182, 10, cr.width * 0.85, cr.height * 0.85);
+  lg.drawImage(cr, 194, 10, cr.width * 0.85, cr.height * 0.85);
 }
 
 function initLanding() {

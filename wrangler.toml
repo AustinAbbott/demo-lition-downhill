@@ -1,4 +1,4 @@
-name = "demolition-downhill"
+name = "demo-lition-downhill"
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
 

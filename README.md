@@ -1,4 +1,4 @@
-# Demolition Downhill ⛷️
+# Demo-lition Downhill ⛷️
 
 A multiplayer ski game that picks who demos first each week.
 
