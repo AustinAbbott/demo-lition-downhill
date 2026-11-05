@@ -224,7 +224,7 @@ export function obstacle(type, v) {
 }
 
 // --- the Scope Creep --------------------------------------------------------------
-// An original yeti: shaggy lavender-white fur, curled horns, three eyes that
+// An original yeti: shaggy lavender-white fur, curled horns, two eyes that
 // track their target, tusks, a work lanyard, and sticky notes stuck in its fur.
 // Redrawn every frame into a small buffer so it can lumber, swing its arms
 // and look around.
@@ -328,10 +328,10 @@ export function creep(t, look, mouth) {
   // brow tuft
   for (let x = 22; x < 43; x++) if (x % 2) px(x, hy - 6 + (x % 4 === 1 ? 0 : 1), FUR);
 
-  // three eyes that track the target
+  // two eyes that track the target
   const lx = Math.max(-1, Math.min(1, look[0])), ly = Math.max(-1, Math.min(1, look[1]));
   const blink = (Math.floor(t * 1.3) % 5 === 0) && (t * 1.3 % 1 < 0.12);
-  for (const [ex, ey, r] of [[26, hy - 1, 3], [32.5, hy - 3, 3.5], [39, hy - 1, 3]]) {
+  for (const [ex, ey, r] of [[27, hy - 2, 3.5], [38, hy - 2, 3.5]]) {
     for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
       if (x * x + y * y > r * r + 0.5) continue;
       px(ex + x, ey + y, blink ? SKIN2 : (x * x + y * y > (r - 1) * (r - 1) + 0.5 ? LINE : '#ffffff'));

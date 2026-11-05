@@ -2,7 +2,7 @@
 
 A multiplayer ski game that picks who demos first each week.
 
-Everyone joins a room from their own browser and skis down the same mountain. After a short head start, **the Scope Creep** shows up. It's a shaggy, horned, three-eyed yeti wearing a work lanyard, with sticky notes stuck in its fur, and it always hunts whoever is furthest back. **The order it eats people is the demo order.** The last skier standing demos last.
+Everyone joins a room from their own browser and skis down the same mountain. After a short head start, **the Scope Creep** shows up. It's a shaggy, horned yeti wearing a work lanyard, with sticky notes stuck in its fur, and it always hunts whoever is furthest back. **The order it eats people is the demo order.** The last skier standing demos last.
 
 The gameplay is an homage to the classic Windows ski game. All the art, the code and the yeti (its own design) are original.
 
