@@ -12,7 +12,14 @@ The gameplay is an homage to the classic Windows ski game. All the art, the code
 2. Everyone joins. The lobby is a warm-up run, so people can ski around while waiting. Press <kbd>R</kbd> to go back to the top.
 3. The host can **add bots**. Type the name of someone who's out, and a bot skis in their place and gets a fair slot.
 4. The host clicks **Start the round**. After a 3-2-1 countdown, everyone is off.
-5. The Scope Creep arrives 14 seconds in. It starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
+5. The Scope Creep arrives 14 seconds in. It's erratic: it weaves as it chases, and every few seconds it switches to a different mood. A speech bubble shows which mood it's in:
+   - **Lunge (!):** a sudden burst of speed when it's close.
+   - **Sniff (?):** gets distracted and wanders sideways. This happens less as it eats more.
+   - **Zigzag:** big swerves from side to side.
+   - **Roar (ROAAAR!):** it stops to roar, and everyone's screen shakes.
+   - **Fickle (ACTUALLY…):** changes scope and goes after the second-to-last skier for a few seconds.
+
+   Under all of that, it starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
    During the round, the **Distance down the hill** panel ranks everyone by how far they've gone. Eaten skiers stay on the list, crossed out, with where they were caught. Your own distance is shown big in the corner.
 6. When the round ends, the results window shows the full order with everyone's distance. **Copy demo order** puts it on your clipboard, ready to paste into Slack.
 
@@ -97,6 +104,7 @@ All the knobs are at the top of `public/js/sim.js`:
 - `MONSTER.cap`: its top speed.
 - `MONSTER.catchup*`: how hard it sprints when it's far behind, which also grows with each meal.
 - `MONSTER.eatTime` / `MONSTER.eatTimeMin` / `MONSTER.eatTimeStep`: how long it chews before hunting the next person. Chewing gets quicker with each meal.
+- `MOOD`: how often each erratic mood is picked, how long it lasts, how fast it moves during it, and the gap between moods.
 - `MAX_SPEED`, `RAMP_SPEED`: how fast skiers go.
 - `TERRAIN`: how crowded the mountain is. It starts at 16 obstacles per 32 m and climbs to about 54, plus bigger and more frequent tree groves, by about 1,500 m. So the longer a round goes, the harder the slope gets.
 

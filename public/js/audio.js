@@ -36,6 +36,11 @@ export const sfx = {
   mogul: () => tone(120, 0.08, { type: 'triangle', vol: 0.12 }),
   hop: () => tone(500, 0.12, { slide: 300, vol: 0.05 }),
   ramp: () => tone(300, 0.4, { slide: 700, vol: 0.06 }),
+  roar: () => {
+    tone(140, 0.7, { type: 'sawtooth', slide: -80, vol: 0.09 });
+    tone(105, 0.8, { type: 'sawtooth', slide: -55, vol: 0.08, delay: 0.05 });
+    noise(0.7, 0.09);
+  },
   spawn: () => { tone(220, 0.5, { type: 'sawtooth', slide: -120, vol: 0.06 }); tone(165, 0.7, { type: 'sawtooth', slide: -90, vol: 0.06, delay: 0.4 }); },
   chomp: () => { for (let i = 0; i < 3; i++) { tone(90, 0.09, { vol: 0.14, delay: i * 0.16 }); noise(0.06, 0.1, i * 0.16); } },
   win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.18, { delay: i * 0.12 })),

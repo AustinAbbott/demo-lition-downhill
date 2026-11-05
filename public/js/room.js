@@ -10,6 +10,7 @@
 import {
   Terrain, newSkier, stepSkier, steer, collideSkiers, botThink, newBrain,
   mulberry32, randomSeed, WORLD_W, START_Y, PX_PER_M, MONSTER, RAMP_SPEED, ST, ST_NAME, monsterSpeed, monsterChew,
+  MOODS, MOOD,
 } from './sim.js';
 
 const TICK_MS = 50;
@@ -312,7 +313,10 @@ export class RoomLogic {
 
     if (!this.monster) {
       if (this.phaseT < MONSTER.grace) return;
-      this.monster = { x: last.sk.x, y: last.sk.y - MONSTER.spawnBehind, st: 'hunt', t: 0, age: 0, target: last.id };
+      this.monster = {
+        x: last.sk.x, y: last.sk.y - MONSTER.spawnBehind, st: 'hunt', t: 0, age: 0, target: last.id,
+        mood: 'hunt', moodT: 0, nextMood: 3 + this.rnd() * 2, sniffDir: 1, jitter: 1, jitterT: 0, phase: this.rnd() * 6,
+      };
       this.broadcast({ t: 'ev', k: 'spawn' });
       return;
     }
@@ -323,14 +327,53 @@ export class RoomLogic {
       if (m.t <= 0) m.st = 'hunt';
       return;
     }
-    m.target = last.id;
-    const dx = last.sk.x - m.x, dy = last.sk.y - m.y;
-    const dist = Math.hypot(dx, dy) || 1;
     const meals = this.order.length;
+
+    // --- moods: roll a new one every few seconds -------------------------
+    if (m.mood !== 'hunt') {
+      m.moodT -= dt;
+      if (m.moodT <= 0) { m.mood = 'hunt'; m.nextMood = MOOD.gapMin + this.rnd() * (MOOD.gapMax - MOOD.gapMin); }
+    } else if ((m.nextMood -= dt) <= 0) {
+      const lastDist = Math.hypot(last.sk.x - m.x, last.sk.y - m.y);
+      const options = Object.keys(MOOD).filter(k => typeof MOOD[k] === 'object')
+        .filter(k => k !== 'lunge' || lastDist < MOOD.lungeRange)
+        .filter(k => k !== 'fickle' || alive.length >= 3);
+      const weight = (k) => k === 'sniff' ? Math.max(2, MOOD.sniff.w - meals * MOOD.sniffFadesPerMeal) : MOOD[k].w;
+      let r = this.rnd() * options.reduce((s, k) => s + weight(k), 0);
+      let pick = options[0];
+      for (const k of options) { if ((r -= weight(k)) < 0) { pick = k; break; } }
+      m.mood = pick; m.moodT = MOOD[pick].secs;
+      if (pick === 'sniff') m.sniffDir = this.rnd() < 0.5 ? -1 : 1;
+      if (pick === 'roar') this.broadcast({ t: 'ev', k: 'roar' });
+    }
+
+    // who it's after: usually last place; when fickle, second-to-last
+    let target = last;
+    if (m.mood === 'fickle') {
+      const sorted = alive.slice().sort((a, b) => a.sk.y - b.sk.y);
+      target = sorted[1] || last;
+    }
+    m.target = target.id;
+    const dx = target.sk.x - m.x, dy = target.sk.y - m.y;
+    const dist = Math.hypot(dx, dy) || 1;
+
     let speed = monsterSpeed(m.age, meals);
     if (dist > MONSTER.catchupDist) speed *= Math.min(MONSTER.catchupMax, MONSTER.catchup + MONSTER.catchupPerMeal * meals);
-    const step = Math.min(dist, speed * dt);
-    m.x += dx / dist * step; m.y += dy / dist * step;
+    // a little random surging and slacking, re-rolled every ~0.7s
+    if ((m.jitterT -= dt) <= 0) { m.jitter = 0.85 + this.rnd() * 0.35; m.jitterT = 0.5 + this.rnd() * 0.5; }
+    speed *= m.jitter * (m.mood === 'hunt' ? 1 : MOOD[m.mood].speed);
+
+    // heading: toward the target, plus a weave across it
+    let ux = dx / dist, uy = dy / dist;
+    if (m.mood === 'sniff') { ux = m.sniffDir * 0.9; uy = 0.3; }
+    else if (dist > 70) {
+      const amp = m.mood === 'zigzag' ? 1.4 : 0.45, freq = m.mood === 'zigzag' ? 5 : 2.2;
+      const wv = Math.sin(m.age * freq + m.phase) * amp;
+      ux += -dy / dist * wv; uy += dx / dist * wv;
+      const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+    }
+    const step = m.mood === 'sniff' ? speed * dt : Math.min(dist, speed * dt);
+    m.x = Math.max(0, Math.min(WORLD_W, m.x + ux * step)); m.y += uy * step;
 
     const r2 = MONSTER.eatRadius * MONSTER.eatRadius;
     for (const p of alive) {
@@ -376,7 +419,7 @@ export class RoomLogic {
     const m = this.monster;
     this.broadcast({
       t: 's', ph: this.phase, pt: Math.round(this.phaseT * 10) / 10, p,
-      m: m ? [Math.round(m.x), Math.round(m.y), m.st === 'eat' ? 1 : 0, m.target] : null,
+      m: m ? [Math.round(m.x), Math.round(m.y), m.st === 'eat' ? 1 : 0, m.target, m.st === 'eat' ? 0 : MOODS.indexOf(m.mood)] : null,
       o: this.order, ms: this.missed,
     });
   }

@@ -38,6 +38,20 @@ export const MONSTER = {
   eatRadius: 26,
   spawnBehind: 800,
 };
+// Moods make it erratic. Between moods it hunts (with a wobbly weave);
+// every few seconds it rolls a new one. `w` = pick weight, `secs` = duration.
+export const MOODS = ['hunt', 'lunge', 'sniff', 'zigzag', 'roar', 'fickle'];
+export const MOOD = {
+  lunge:  { w: 25, secs: 0.9, speed: 1.75 },        // sudden burst when it's close
+  sniff:  { w: 16, secs: 1.3, speed: 0.25 },        // distracted by a tree; wanders sideways
+  zigzag: { w: 28, secs: 2.6, speed: 1.05 },        // big side-to-side weave
+  roar:   { w: 14, secs: 0.9, speed: 0 },           // stops to roar (everyone's screen shakes)
+  fickle: { w: 17, secs: 3.0, speed: 1.0 },         // changes its mind: chases 2nd-to-last instead
+  gapMin: 2, gapMax: 5.5,                           // seconds of plain hunting between moods
+  lungeRange: 340,                                  // only lunges if its target is this close
+  sniffFadesPerMeal: 2.5,                           // gets less distractible as it eats
+};
+
 // helpers so the room and the HUD agree on how riled up it is
 export function monsterSpeed(age, meals) {
   return Math.min(MONSTER.cap, MONSTER.base + MONSTER.ramp * age + MONSTER.perMeal * meals);

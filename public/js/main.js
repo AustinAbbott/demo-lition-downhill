@@ -1,6 +1,6 @@
 // main.js — the browser side: UI, input, networking, and rendering.
 import {
-  Terrain, newSkier, stepSkier, steer, collideSkiers, mulberry32, hash2,
+  Terrain, newSkier, stepSkier, steer, collideSkiers, mulberry32, hash2, MOODS,
   WORLD_W, CHUNK_H, PX_PER_M, START_Y, CLEAR_Y, MONSTER, ST, ST_NAME,
 } from './sim.js';
 import * as S from './sprites.js';
@@ -181,7 +181,10 @@ function onState(m) {
 }
 
 function onEvent(m) {
-  if (m.k === 'spawn') {
+  if (m.k === 'roar') {
+    sfx.roar();
+    G.shakeUntil = performance.now() + 650;
+  } else if (m.k === 'spawn') {
     banner('THE SCOPE CREEP IS LOOSE!', 'IT EATS WHOEVER IS FURTHEST BACK', 2800);
     sfx.spawn();
   } else if (m.k === 'eat') {
@@ -303,7 +306,7 @@ function viewState(now) {
   let monster = null;
   const ma = a.m.m, mb = b.m.m;
   if (mb) {
-    monster = { x: mb[0], y: mb[1], eat: mb[2] === 1, target: mb[3] };
+    monster = { x: mb[0], y: mb[1], eat: mb[2] === 1, target: mb[3], mood: MOODS[mb[4] | 0] || 'hunt' };
     if (ma) { monster.x = ma[0] + (mb[0] - ma[0]) * f; monster.y = ma[1] + (mb[1] - ma[1]) * f; }
   }
   return { players, monster };
@@ -397,6 +400,12 @@ function render(now, dt) {
   g.fillStyle = '#f7fbff';
   g.fillRect(0, 0, cv.width, cv.height);
   updateCamera(dt);
+  let shakeX = 0, shakeY = 0;
+  if (G.shakeUntil && now < G.shakeUntil) {
+    const k = (G.shakeUntil - now) / 650 * 3;
+    shakeX = (Math.random() - 0.5) * 2 * k; shakeY = (Math.random() - 0.5) * 2 * k;
+    G.camX += shakeX; G.camY += shakeY;
+  }
   const top = G.camY - 60, bot = G.camY + VH + 60;
 
   // out-of-bounds tint
@@ -417,7 +426,7 @@ function render(now, dt) {
   g.lineWidth = Z; g.lineCap = 'square';
   for (const [id, t] of G.trails) {
     if (t.length < 2) continue;
-    g.strokeStyle = id === '__creep' ? 'rgba(90,79,207,0.22)' : '#d3deec';
+    g.strokeStyle = id === '__creep' ? 'rgba(120,140,175,0.25)' : '#d3deec';
     if (id === '__creep') g.lineWidth = Z * 6;
     g.beginPath();
     for (const off of id === '__creep' ? [0] : [-2.5, 2.5]) {
@@ -492,6 +501,7 @@ function render(now, dt) {
   }
 
   drawOverlay(now);
+  G.camX -= shakeX; G.camY -= shakeY; // shake is cosmetic only
 }
 
 function drawStartLine() {
@@ -538,14 +548,31 @@ function drawCreep(m, now) {
   let look = [0, 1];
   const tgt = m.target && (m.target === G.you && G.me ? G.me : G.view.players.find(p => p.id === m.target));
   if (tgt) { const dx = tgt.x - m.x, dy = tgt.y - m.y, d = Math.hypot(dx, dy) || 1; look = [dx / d, dy / d]; }
-  const mouth = m.eat ? 0.5 + 0.5 * Math.abs(Math.sin(now / 90)) : 0.12 + 0.08 * Math.sin(now / 200);
+  if (m.mood === 'sniff') look = [Math.sin(now / 300), 0.2];          // looking around, distracted
+  let mouth = m.eat ? 0.5 + 0.5 * Math.abs(Math.sin(now / 90)) : 0.12 + 0.08 * Math.sin(now / 200);
+  if (m.mood === 'roar') mouth = 0.85 + 0.15 * Math.sin(now / 40);
+  else if (m.mood === 'lunge') mouth = 0.55;
   const img = S.creep(now / 1000, look, mouth);
   const grow = 1.15 + 0.05 * Math.min(8, (G.order || []).length); // it grows as it eats
   const w = Math.round(img.width * Z * grow), h = Math.round(img.height * Z * grow);
   const bounce = m.eat ? Math.abs(Math.sin(now / 90)) * 3 * Z : 0;
   g.fillStyle = 'rgba(40,40,110,0.18)';
   g.beginPath(); g.ellipse(sx(m.x), sy(m.y + 9), w * 0.38, 5 * Z, 0, 0, Math.PI * 2); g.fill();
-  g.drawImage(img, Math.round(sx(m.x) - w / 2), Math.round(sy(m.y + 10) - h - bounce), w, h);
+  const jolt = m.mood === 'roar' ? Math.round(Math.sin(now / 30) * 1.5 * Z) : 0;
+  g.drawImage(img, Math.round(sx(m.x) - w / 2) + jolt, Math.round(sy(m.y + 10) - h - bounce), w, h);
+  // speech bubble so everyone can tell what mood it's in
+  const say = { sniff: '?', lunge: '!', roar: 'ROAAAR!', fickle: 'ACTUALLY...' }[m.mood];
+  if (say && !m.eat) {
+    const ts = Math.max(1, Math.round(Z)) * (say.length === 1 ? 2 : 1);
+    const tw = S.textWidth(say, ts), pad = 3 * ts;
+    const bx = Math.round(sx(m.x) + w * 0.18), by = Math.round(sy(m.y + 10) - h - 4 * Z - 7 * ts - pad * 2);
+    g.fillStyle = '#ffffff'; g.fillRect(bx, by, tw + pad * 2, 7 * ts + pad * 2);
+    g.fillStyle = '#2c3445';
+    g.fillRect(bx, by, tw + pad * 2, Z); g.fillRect(bx, by + 7 * ts + pad * 2 - Z, tw + pad * 2, Z);
+    g.fillRect(bx, by, Z, 7 * ts + pad * 2); g.fillRect(bx + tw + pad * 2 - Z, by, Z, 7 * ts + pad * 2);
+    g.fillStyle = '#ffffff'; g.fillRect(bx + 2 * Z, by + 7 * ts + pad * 2 - Z, 3 * Z, 3 * Z); // tail
+    S.drawText(g, say, bx + pad, by + pad, ts, m.mood === 'roar' || m.mood === 'lunge' ? '#e63946' : '#2c3445');
+  }
 }
 
 // bottom edge for overlay text: on phones, stay above the touch buttons
