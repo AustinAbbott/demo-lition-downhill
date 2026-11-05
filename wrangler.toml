@@ -1,0 +1,25 @@
+name = "demolition-downhill"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# Your domain's DNS is already on Cloudflare, so deploying creates the DNS
+# record and certificate for this hostname. Change it if you like.
+# (Top-level keys must come before any [table] below.)
+routes = [
+  { pattern = "ski.austinabbott.dev", custom_domain = true }
+]
+
+# Serve the game itself (HTML/CSS/JS) straight from ./public
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Each room code maps to one Durable Object that runs that room's game loop
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# SQLite-backed class: required for Durable Objects on the Workers Free plan
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
