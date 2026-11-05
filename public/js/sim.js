@@ -19,17 +19,32 @@ const SIDESTEP = 75;              // shuffling sideways when fully turned
 export const DIR_ANGLE = [0, 0.42, 0.95, Math.PI / 2];
 const DIR_SPEED = [MAX_SPEED, 330, 220, 0];
 
+// The Scope Creep starts sluggish and gets more aggressive the longer it's
+// loose AND with every skier it eats (it literally grows). Speeds are px/s;
+// a skier pointed straight downhill does MAX_SPEED (380).
 export const MONSTER = {
-  grace: 14,        // seconds of skiing before the Scope Creep shows up
-  base: 320,        // starting speed (a little slower than a perfect skier)
-  ramp: 7,          // +px/s every second it's been loose
+  grace: 14,          // seconds of skiing before it shows up
+  base: 240,          // starting speed: only catches people who are crashing a lot
+  ramp: 3.5,          // +px/s for every second it's been loose
+  perMeal: 22,        // +px/s for every skier it has eaten
   cap: 820,
-  catchupDist: 900, // if it's this far from its target it sprints
-  catchup: 1.7,
-  eatTime: 1.6,     // seconds spent chewing (it stops moving)
+  catchupDist: 900,   // when it's this far from its target it sprints...
+  catchup: 1.25,      // ...this much faster at first
+  catchupPerMeal: 0.08, // ...and the sprint gets stronger with every meal
+  catchupMax: 1.8,
+  eatTime: 2.4,       // seconds spent chewing its first meal (it stops moving)
+  eatTimeMin: 1.0,    // chewing gets quicker as it gets hungrier
+  eatTimeStep: 0.15,
   eatRadius: 26,
-  spawnBehind: 650,
+  spawnBehind: 800,
 };
+// helpers so the room and the HUD agree on how riled up it is
+export function monsterSpeed(age, meals) {
+  return Math.min(MONSTER.cap, MONSTER.base + MONSTER.ramp * age + MONSTER.perMeal * meals);
+}
+export function monsterChew(meals) {
+  return Math.max(MONSTER.eatTimeMin, MONSTER.eatTime - MONSTER.eatTimeStep * meals);
+}
 
 // Status codes on the wire.
 export const ST = { ski: 0, crash: 1, air: 2, bigair: 3, frozen: 4, eaten: 5, wait: 6 };

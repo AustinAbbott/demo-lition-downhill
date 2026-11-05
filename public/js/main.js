@@ -166,7 +166,9 @@ function onEvent(m) {
     const mine = m.id === G.you;
     if (mine) G.eatenSlot = m.n;
     if (!G.order.includes(m.id)) G.order = [...G.order, m.id];
-    banner('CHOMP!', mine ? `THAT'S YOU. YOU DEMO #${m.n}` : `${name} DEMOS #${m.n}`, 2200);
+    const meals = G.order.length;
+    const hungrier = meals > 0 && meals % 3 === 0 ? ' - AND IT JUST GOT FASTER' : '';
+    banner('CHOMP!', (mine ? `THAT'S YOU. YOU DEMO #${m.n}` : `${name} DEMOS #${m.n}`) + hungrier, 2400);
     const snap = G.view && G.view.monster;
     if (snap) G.pops.push({ x: snap.x, y: snap.y, n: m.n, at: performance.now() });
     sfx.chomp();
@@ -514,7 +516,8 @@ function drawCreep(m, now) {
   if (tgt) { const dx = tgt.x - m.x, dy = tgt.y - m.y, d = Math.hypot(dx, dy) || 1; look = [dx / d, dy / d]; }
   const mouth = m.eat ? 0.5 + 0.5 * Math.abs(Math.sin(now / 90)) : 0.12 + 0.08 * Math.sin(now / 200);
   const img = S.creep(now / 1000, look, mouth);
-  const w = Math.round(img.width * Z * 1.3), h = Math.round(img.height * Z * 1.3);
+  const grow = 1.15 + 0.05 * Math.min(8, (G.order || []).length); // it grows as it eats
+  const w = Math.round(img.width * Z * grow), h = Math.round(img.height * Z * grow);
   const bounce = m.eat ? Math.abs(Math.sin(now / 90)) * 3 * Z : 0;
   g.drawImage(img, Math.round(sx(m.x) - w / 2), Math.round(sy(m.y + 10) - h - bounce), w, h);
 }

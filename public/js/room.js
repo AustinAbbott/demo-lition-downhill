@@ -9,7 +9,7 @@
 
 import {
   Terrain, newSkier, stepSkier, steer, collideSkiers, botThink, newBrain,
-  mulberry32, randomSeed, WORLD_W, START_Y, MONSTER, RAMP_SPEED, ST, ST_NAME,
+  mulberry32, randomSeed, WORLD_W, START_Y, MONSTER, RAMP_SPEED, ST, ST_NAME, monsterSpeed, monsterChew,
 } from './sim.js';
 
 const TICK_MS = 50;
@@ -296,8 +296,9 @@ export class RoomLogic {
     m.target = last.id;
     const dx = last.sk.x - m.x, dy = last.sk.y - m.y;
     const dist = Math.hypot(dx, dy) || 1;
-    let speed = Math.min(MONSTER.cap, MONSTER.base + MONSTER.ramp * m.age);
-    if (dist > MONSTER.catchupDist) speed *= MONSTER.catchup;
+    const meals = this.order.length;
+    let speed = monsterSpeed(m.age, meals);
+    if (dist > MONSTER.catchupDist) speed *= Math.min(MONSTER.catchupMax, MONSTER.catchup + MONSTER.catchupPerMeal * meals);
     const step = Math.min(dist, speed * dt);
     m.x += dx / dist * step; m.y += dy / dist * step;
 
@@ -312,7 +313,7 @@ export class RoomLogic {
     const m = this.monster;
     p.sk.st = 'eaten';
     this.order.push(p.id);
-    m.st = 'eat'; m.t = MONSTER.eatTime; m.x = p.sk.x; m.y = p.sk.y;
+    m.st = 'eat'; m.t = monsterChew(this.order.length - 1); m.x = p.sk.x; m.y = p.sk.y;
     const slot = this.missed.length + this.order.length;
     this.broadcast({ t: 'ev', k: 'eat', id: p.id, n: slot });
     const aliveAfter = aliveBefore - 1;

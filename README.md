@@ -12,7 +12,7 @@ The gameplay is an homage to the classic Windows ski game. All the art, the mons
 2. Everyone joins. The lobby is a warm-up run, so people can ski around while waiting. Press <kbd>R</kbd> to go back to the top.
 3. The host can **add bots**. Type the name of someone who's out, and a bot skis in their place and gets a fair slot.
 4. The host clicks **Start the round**. After a 3-2-1 countdown, everyone is off.
-5. The Scope Creep arrives 14 seconds in. It starts a little slower than a perfect skier and speeds up every second, so every round ends. Expect about 1½–2 minutes with 12 people.
+5. The Scope Creep arrives 14 seconds in. It starts out sluggish, so it only catches people who keep crashing. It gets faster every second it's loose and with every skier it eats, and it grows as it eats. Every third meal, the game announces that it just got faster. Expect about 2 minutes with 12 people: a slow first catch, then a frantic last 30 seconds.
 6. When the round ends, the results window shows the full order, and **Copy for Slack** puts it on your clipboard.
 
 Anyone who joins mid-round "missed the lift" and **demos first**.
@@ -83,8 +83,12 @@ npx wrangler deploy
 All the knobs are at the top of `public/js/sim.js`:
 
 - `MONSTER.grace`: seconds before the monster appears.
-- `MONSTER.base` / `MONSTER.ramp` / `MONSTER.cap`: how fast it starts, how quickly it speeds up, and its top speed.
-- `MONSTER.eatTime`: how long it spends chewing before it hunts the next person.
+- `MONSTER.base`: how fast it starts. A skier pointed straight down does 380.
+- `MONSTER.ramp`: how much faster it gets every second.
+- `MONSTER.perMeal`: how much faster it gets with every skier it eats.
+- `MONSTER.cap`: its top speed.
+- `MONSTER.catchup*`: how hard it sprints when it's far behind, which also grows with each meal.
+- `MONSTER.eatTime` / `MONSTER.eatTimeMin` / `MONSTER.eatTimeStep`: how long it chews before hunting the next person. Chewing gets quicker with each meal.
 - `MAX_SPEED`, `RAMP_SPEED`: how fast skiers go.
 - `Terrain.chunk()`: how many obstacles there are, and how quickly the mountain gets denser.
 
