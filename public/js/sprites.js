@@ -224,10 +224,10 @@ export function obstacle(type, v) {
 }
 
 // --- the Scope Creep --------------------------------------------------------------
-// An original yeti: shaggy lavender-white fur, curled horns, two eyes that
-// track their target, tusks, a work lanyard, and sticky notes stuck in its fur.
-// Redrawn every frame into a small buffer so it can lumber, swing its arms
-// and look around.
+// A classic folklore yeti, drawn from scratch: big shaggy white fur, a
+// blue-grey face, hands and feet, a heavy brow, dark eyes and fangs.
+// Redrawn every frame into a small buffer so it can lumber, swing its arms,
+// look around and chew.
 const CW = 64, CH = 70;
 let creepBuf = null;
 export function creep(t, look, mouth) {
@@ -237,127 +237,113 @@ export function creep(t, look, mouth) {
   const px = (x, y, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), 1, 1); };
   const rect = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(Math.round(x), Math.round(y), w, h); };
 
-  const FUR = '#efecff', FUR2 = '#d9d3fa', SHADE = '#b9b0ec', LINE = '#3b3470';
-  const SKIN = '#8a80d6', SKIN2 = '#6c62bf', HORN = '#eadcb0', HORN2 = '#b49d5c';
-  const walk = Math.sin(t * 9);            // lumbering gait
+  const FUR = '#f6f8fc', FUR2 = '#e2e8f2', SHADE = '#c3cedf', DEEP = '#a6b4ca', LINE = '#2c3445';
+  const SKIN = '#8396b0', SKIN2 = '#647893', SKIN3 = '#4c5d75';
+  const walk = Math.sin(t * 8);
   const chew = mouth > 0.3;
 
-  // shaggy blob: ellipse with tufted edge; returns 0 outside, 1 edge, 2 inside
-  const shag = (x, y, cx, cy, rx, ry, seed) => {
-    const dx = x - cx, dy = y - cy, a = Math.atan2(dy, dx);
-    const tuft = Math.max(0, Math.sin(a * 13 + seed)) * 0.22 + Math.max(0, Math.sin(a * 7 - seed * 2)) * 0.1;
-    const r = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-    if (r > 1 + tuft) return 0;
-    return r > 0.86 + tuft ? 1 : 2;
+  // Build one fur silhouette (body + head + arms + legs) in a mask, then
+  // outline it once so every part joins cleanly.
+  const mask = new Uint8Array(CW * CH);
+  const set = (x, y) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < CW && y < CH) mask[y * CW + x] = 1; };
+  const blobFill = (cx, cy, rx, ry, seed, tuftAmt) => {
+    for (let y = Math.floor(cy - ry - 3); y <= cy + ry + 3; y++) for (let x = Math.floor(cx - rx - 3); x <= cx + rx + 3; x++) {
+      const dx = x - cx, dy = y - cy, a = Math.atan2(dy, dx);
+      const tuft = Math.max(0, Math.sin(a * 15 + seed)) * tuftAmt + Math.max(0, Math.sin(a * 6 - seed)) * 0.06;
+      if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1 + tuft) set(x, y);
+    }
   };
-  const furCol = (x, y, shadeFrom) => {
-    if (y > shadeFrom) return ((x * 5 + y * 3) % 9 === 0) ? SHADE : FUR2;
-    return ((x * 7 + y * 3) % 11 === 0) ? FUR2 : FUR;
-  };
-
-  // legs (behind the body), stepping
-  for (const [lx, ph] of [[21, 1], [43, -1]]) {
+  const hy = 16 + (chew ? Math.abs(Math.sin(t * 14)) : 0);
+  const hands = [];
+  // body: barrel chest
+  blobFill(32, 39, 18, 19, 1.3 + Math.sin(t * 3) * 0.1, 0.22);
+  // head: sits low between the shoulders
+  blobFill(32, hy, 12, 11, 2.4, 0.3);
+  // arms: chains of shaggy blobs from shoulder to wrist, swinging
+  const armPaths = [];
+  for (const [sx, dir, swing] of [[17, -1, walk * 3], [47, 1, -walk * 3]]) {
+    const sy = 25, hx = sx + dir * 11 + swing, hyy = 49;
+    for (let i = 0; i <= 8; i++) {
+      const f = i / 8;
+      blobFill(sx + (hx - sx) * f, sy + (hyy - sy) * f, 5 - f * 1.5, 4.5, i * 1.7, 0.35);
+    }
+    hands.push([hx, hyy + 3, dir]);
+    armPaths.push([sx, sy, hx, hyy, dir]);
+  }
+  // legs: thick and short, stepping
+  const feet = [];
+  for (const [lx, ph] of [[24, 1], [40, -1]]) {
     const lift = Math.max(0, walk * ph) * 3;
-    const y0 = 52 - lift;
-    for (let y = y0; y < CH - 2 - lift; y++) for (let x = lx - 6; x <= lx + 6; x++) {
-      const e = Math.abs(x - lx) >= 5 || y >= CH - 4 - lift;
-      px(x, y, e ? LINE : (y > y0 + 6 ? SHADE : FUR2));
+    const y0 = 50 - lift, y1 = CH - 6 - lift;
+    for (let y = y0; y <= y1; y++) for (let x = lx - 6; x <= lx + 6; x++) {
+      if (Math.abs(x - lx) <= 5 + ((y % 3 === 0) ? 1 : 0)) set(x, y);
     }
-    // big feet with toes
-    rect(lx - 7, CH - 4 - lift, 15, 2, SKIN2);
-    for (let k = -6; k <= 6; k += 4) px(lx + k, CH - 2 - lift, LINE);
+    feet.push([lx, y1 + 1]);
   }
-
-  // arms (swinging), drawn as shaggy columns from shoulder to hand
-  const arm = (sx, sy, dir, swing) => {
-    const hx = sx + dir * 6 + swing, hy = sy + 21;
-    for (let i = 0; i <= 21; i++) {
-      const f = i / 21, cx = sx + (hx - sx) * f, cy = sy + (hy - sy) * f;
-      const w = 4 - f * 1.5;                       // tapers toward the wrist
-      const tuft = (i % 4 === 1) ? 2 : (i % 4 === 2 ? 1 : 0); // shaggy outer edge
-      for (let x = -Math.round(w); x <= Math.round(w) + tuft; x++) {
-        const xo = x * dir;                         // outward is +
-        const edge = x === -Math.round(w) || x === Math.round(w) + tuft;
-        px(cx + xo, cy, edge ? LINE : (x > 0 ? SHADE : FUR));
-      }
+  // paint fur with a single outline around the whole silhouette
+  for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+    if (!mask[y * CW + x]) continue;
+    const edge = !mask[y * CW + x - 1] || !mask[y * CW + x + 1] || !mask[(y - 1) * CW + x] || !mask[(y + 1) * CW + x] || x === 0 || x === CW - 1;
+    if (edge) { px(x, y, LINE); continue; }
+    // shading: lighter up-left, cooler down-right, with short fur strands
+    const k = (y - 8) / 64 + Math.max(0, x - 30) / 120 + (Math.abs(x - 32) > 13 ? 0.08 : 0);
+    const strand = ((x * 3 + y) % 7 === 0) || ((x + y * 2) % 13 === 0);
+    px(x, y, k > 0.62 ? (strand ? DEEP : SHADE) : k > 0.3 ? (strand ? SHADE : FUR2) : (strand ? FUR2 : FUR));
+  }
+  // crease where each arm lies against the torso, so the arms read as arms
+  for (const [sx, sy, hx, hyy, dir] of armPaths) {
+    for (let i = 10; i <= 22; i++) {
+      const f = i / 24, cx = sx + (hx - sx) * f, cy = sy + (hyy - sy) * f;
+      const inner = cx - dir * (4.6 - f * 1.5);
+      px(inner, cy, '#8a99b2'); px(inner - dir, cy, i > 13 ? DEEP : SHADE);
     }
-    // hand + claws
-    rect(hx - 3, hy, 7, 4, SKIN2);
-    for (let k = -3; k <= 3; k += 3) { px(hx + k, hy + 4, '#ffffff'); px(hx + k, hy + 5, '#ffffff'); }
-  };
-
-  // body
-  for (let y = 22; y < 60; y++) for (let x = 2; x < CW - 2; x++) {
-    const v = shag(x, y, 32, 40, 19, 19, 0.7 + Math.sin(t * 2) * 0.15);
-    if (v) px(x, y, v === 1 ? LINE : furCol(x, y, 48));
   }
-  // chest patch of skin
-  for (let y = 30; y < 50; y++) for (let x = 22; x < 43; x++) {
-    const dx = (x - 32.5) / 10, dy = (y - 40) / 10;
-    if (dx * dx + dy * dy < 1) px(x, y, dy > 0.4 ? SKIN2 : SKIN);
+  // big blue-grey feet
+  for (const [lx, fy] of feet) {
+    rect(lx - 7, fy, 15, 3, SKIN2); rect(lx - 7, fy + 3, 15, 1, LINE);
+    for (let k = -5; k <= 5; k += 3) px(lx + k, fy, SKIN3);
   }
-  // work lanyard + badge
-  for (let i = 0; i < 9; i++) { px(26 + i * 0.6, 29 + i, '#e63946'); px(39 - i * 0.6, 29 + i, '#e63946'); }
-  rect(29, 38, 8, 7, '#ffffff');
-  rect(29, 38, 8, 2, '#000080');
-  rect(30, 41, 3, 3, '#7a6fd0'); rect(34, 41, 2, 1, '#999'); rect(34, 43, 2, 1, '#999');
-
-  arm(13, 28, -1, walk * 3);
-  arm(51, 28, 1, -walk * 3);
-
-  // head (overlaps body; no neck to speak of)
-  const hy = 17 + (chew ? Math.abs(Math.sin(t * 14)) : 0);
-  for (let y = 2; y < 34; y++) for (let x = 12; x < 52; x++) {
-    const v = shag(x, y, 32, hy, 15, 13, 2.1);
-    if (v) px(x, y, v === 1 ? LINE : furCol(x, y, 99));
-  }
-  // curled horns
-  const horn = (bx, dir) => {
-    const pts = [[0, 0], [1, -2], [2, -4], [4, -5], [6, -5], [7, -4], [7, -2]];
-    for (const [hx, hy2] of pts) {
-      const x = bx + hx * dir, y = hy - 9 + hy2;
-      rect(x - 1, y, 3, 2, HORN); px(x + dir, y + 1, HORN2);
+  // hands with claws
+  for (const [hx, hy2, dir] of hands) {
+    for (let y = 0; y < 6; y++) for (let x = -3; x <= 3; x++) {
+      const edge = Math.abs(x) === 3 || y === 5;
+      px(hx + x, hy2 + y, edge ? SKIN3 : (x * dir > 0 ? SKIN2 : SKIN));
     }
-  };
-  horn(23, -1); horn(41, 1);
-  // face
-  for (let y = hy - 6; y < hy + 10; y++) for (let x = 21; x < 44; x++) {
-    const dx = (x - 32.5) / 11, dy = (y - (hy + 2)) / 8.5;
-    if (dx * dx + dy * dy < 1) px(x, y, dy > 0.5 ? SKIN2 : SKIN);
+    for (let k = -2; k <= 2; k += 2) { px(hx + k, hy2 + 6, '#ffffff'); px(hx + k, hy2 + 7, '#ffffff'); }
   }
-  // brow tuft
-  for (let x = 22; x < 43; x++) if (x % 2) px(x, hy - 6 + (x % 4 === 1 ? 0 : 1), FUR);
-
-  // two eyes that track the target
-  const lx = Math.max(-1, Math.min(1, look[0])), ly = Math.max(-1, Math.min(1, look[1]));
+  // face: blue-grey, longer than wide
+  for (let y = hy - 6; y < hy + 11; y++) for (let x = 22; x < 43; x++) {
+    const dx = (x - 32.5) / 8.5, dy = (y - (hy + 2.5)) / 8.5;
+    if (dx * dx + dy * dy < 1) px(x, y, dy > 0.45 ? SKIN2 : (dx > 0.45 ? SKIN2 : SKIN));
+  }
+  // heavy furry brow
+  for (let x = 23; x <= 42; x++) {
+    const yb = hy - 4 + (Math.abs(x - 32.5) > 6 ? 1 : 0);
+    px(x, yb, x % 2 ? FUR : FUR2); px(x, yb - 1, FUR);
+    if (x % 3 === 0) px(x, yb + 1, FUR2);
+  }
+  // eyes: dark, deep-set, with a glint; they glance toward the target
+  const lx = Math.round(Math.max(-1, Math.min(1, look[0]))), ly = Math.round(Math.max(-1, Math.min(1, look[1])));
   const blink = (Math.floor(t * 1.3) % 5 === 0) && (t * 1.3 % 1 < 0.12);
-  for (const [ex, ey, r] of [[27, hy - 2, 3.5], [38, hy - 2, 3.5]]) {
-    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
-      if (x * x + y * y > r * r + 0.5) continue;
-      px(ex + x, ey + y, blink ? SKIN2 : (x * x + y * y > (r - 1) * (r - 1) + 0.5 ? LINE : '#ffffff'));
-    }
-    if (!blink) {
-      const pxp = ex + Math.round(lx * (r - 1.5)), pyp = ey + Math.round(ly * (r - 1.5));
-      rect(pxp - 1, pyp - 1, 2, 2, '#ff2e63'); px(pxp, pyp, '#000');
-    }
+  for (const ex of [28, 37]) {
+    const ey = hy - 1;
+    if (blink) { rect(ex - 2, ey, 4, 1, SKIN3); continue; }
+    rect(ex - 2, ey - 1, 4, 3, '#ffffff');
+    rect(ex - 1 + lx * 0.5, ey - 1 + Math.max(0, ly) * 0.5, 2, 2, '#14181f');
+    px(ex - 1 + lx * 0.5, ey - 1, '#ffffff');
   }
+  // nose
+  rect(31, hy + 2, 3, 1, SKIN3); px(31, hy + 3, SKIN3); px(33, hy + 3, SKIN3);
 
-  // mouth with tusks
-  const mw = 16, mx = 32.5 - mw / 2, my = hy + 4;
-  const open = Math.round(2 + mouth * 9);
-  rect(mx, my, mw, open, '#2b0a2e');
-  if (mouth > 0.3) rect(mx + 4, my + open - 3, 8, 2, '#e5383b');
-  g.fillStyle = '#ffffff';
-  for (let i = 1; i < mw - 1; i += 3) { g.fillRect(Math.round(mx + i), my, 2, 1); g.fillRect(Math.round(mx + i + 1), my + open - 1, 2, 1); }
-  // tusks poke up from the lower jaw
-  rect(mx - 1, my + open - 4, 2, 4, '#fffbe8'); rect(mx + mw - 1, my + open - 4, 2, 4, '#fffbe8');
+  // mouth: a wide grimace with fangs; opens to chomp
+  const mw = 12, mx = 32.5 - mw / 2, my = hy + 6;
+  const open = Math.round(1 + mouth * 7);
+  rect(mx, my, mw, open, '#1a0f14');
+  if (mouth > 0.3) rect(mx + 3, my + open - 2, 6, 2, '#c9374a');
+  // upper fangs, lower teeth
+  rect(mx + 1, my, 2, 2 + (mouth > 0.3 ? 1 : 0), '#ffffff'); rect(mx + mw - 3, my, 2, 2 + (mouth > 0.3 ? 1 : 0), '#ffffff');
+  if (open > 3) for (let i = 3; i < mw - 3; i += 2) px(mx + i, my + open - 1, '#ffffff');
 
-  // sticky notes stuck in the fur (feature requests, obviously)
-  const notes = [[8, 44, '#ffd60a'], [49, 47, '#ff8fab'], [17, 9, '#90e0ef'], [44, 55, '#ffd60a']];
-  for (const [nx, ny, col] of notes) {
-    rect(nx, ny, 5, 5, col);
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(nx + 1, ny + 2, 3, 1);
-  }
   return creepBuf;
 }
 export const CREEP_W = CW, CREEP_H = CH;
