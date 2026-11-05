@@ -84,12 +84,19 @@ export class RoomLogic {
       if (this.open) this.touch();
       // nobody's here: reset so the next visitor gets a fresh lobby
       this.players.clear(); this.phase = 'lobby'; this.hostId = null; this.monster = null;
+      this.order = []; this.missed = []; this.final = null; this.endAt = null; this.phaseT = 0;
+      this.newMountain();
       this.onEmpty && this.onEmpty();
     }
   }
 
   message(ws, raw) {
+    try { this.handle(ws, raw); } catch (err) { console.error('room message failed', err); }
+  }
+
+  handle(ws, raw) {
     let m;
+    if (typeof raw !== 'string' || raw.length > 2000) return;
     try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m.t !== 'string') return;
     if (m.t === 'join') return this.join(ws, m);
@@ -149,7 +156,9 @@ export class RoomLogic {
     }
     this.touch();
     let p = typeof m.id === 'string' && this.players.get(m.id);
-    if (p && !p.bot) {
+    // ids are visible to everyone, so taking over a skier needs the secret it joined with
+    if (p && (p.bot || typeof m.secret !== 'string' || m.secret !== p.secret)) p = null;
+    if (p) {
       // reconnecting: take over the existing skier
       if (p.ws && p.ws !== ws) { this.sockets.delete(p.ws); try { p.ws.close(4000, 'replaced'); } catch {} }
       p.ws = ws; p.connected = true;
@@ -158,12 +167,13 @@ export class RoomLogic {
     } else {
       const humans = [...this.players.values()].filter(q => !q.bot).length;
       if (this.players.size >= MAX_PLAYERS || humans >= MAX_PLAYERS) {
-        this.send(ws, { t: 'error', msg: 'This room is full.' });
-        return;
+        return this.reject(ws, 'full', 'This room is full (24 skiers max).');
       }
-      const id = (typeof m.id === 'string' && /^[a-z0-9]{4,12}$/.test(m.id) && !this.players.has(m.id)) ? m.id : shortId();
+      let id = (typeof m.id === 'string' && /^[a-z0-9]{4,12}$/.test(m.id) && !this.players.has(m.id)) ? m.id : shortId();
+      while (this.players.has(id)) id = shortId();
       const color = COLORS.includes(m.color) ? m.color : COLORS[this.players.size % COLORS.length];
-      p = { id, name: cleanName(m.name), color, bot: false, ws, connected: true, lastPos: 0 };
+      const secret = typeof m.secret === 'string' && m.secret.length >= 8 && m.secret.length <= 64 ? m.secret : shortId() + shortId();
+      p = { id, name: cleanName(m.name), color, bot: false, ws, connected: true, lastPos: 0, secret };
       this.setLook(p, m);
       if (this.phase === 'run') {
         p.sk = newSkier(WORLD_W / 2, START_Y, 'wait');
@@ -180,7 +190,7 @@ export class RoomLogic {
     p.lastPos = this.now();
     this.fixHost();
     this.send(ws, {
-      t: 'hello', you: p.id, code: this.code, seed: this.seed, phase: this.phase,
+      t: 'hello', you: p.id, secret: p.secret, code: this.code, seed: this.seed, phase: this.phase,
       x: p.sk.x, y: p.sk.y, st: ST[p.sk.st], late: !!p.late, final: this.final, taken: [...this.taken],
     });
     this.sendRoster();
@@ -193,7 +203,17 @@ export class RoomLogic {
     this.hostId = next ? next.id : null;
   }
 
-  freeSpawnX() { return 260 + Math.floor(this.rnd() * (WORLD_W - 520)); }
+  // a spot on the start line that isn't on top of anyone already standing there
+  freeSpawnX() {
+    let x = 0;
+    for (let tries = 0; tries < 12; tries++) {
+      x = 260 + Math.floor(this.rnd() * (WORLD_W - 520));
+      let clear = true;
+      for (const p of this.players.values()) if (p.sk && Math.abs(p.sk.y - START_Y) < 40 && Math.abs(p.sk.x - x) < 40) { clear = false; break; }
+      if (clear) break;
+    }
+    return x;
+  }
 
   addBot(name) {
     if (this.players.size >= MAX_PLAYERS) return;
@@ -230,7 +250,7 @@ export class RoomLogic {
     p.lastPos = now;
     // Plausibility: no faster than a ramp launch (with slack), no climbing.
     let nx = Math.max(0, Math.min(WORLD_W, x)), ny = y;
-    if (this.phase === 'lobby' && m.reset) { sk.x = nx; sk.y = START_Y; return; }
+    if ((this.phase === 'lobby' || this.phase === 'over') && m.reset) { sk.x = nx; sk.y = START_Y; return; }
     if (ny < sk.y - 4) ny = sk.y - 4;
     const dx = nx - sk.x, dy = ny - sk.y, dist = Math.hypot(dx, dy);
     const maxD = RAMP_SPEED * dt * 1.6 + 30;
@@ -303,6 +323,10 @@ export class RoomLogic {
 
   // --- the loop ---------------------------------------------------------------
   tick(dt) {
+    try { this.step(dt); } catch (err) { console.error('room tick failed', err); }
+  }
+
+  step(dt) {
     this.phaseT += dt;
     this.tickN = (this.tickN || 0) + 1;
     const all = [...this.players.values()];
@@ -490,7 +514,12 @@ export class RoomLogic {
     if (HATS.includes(m.hat)) p.hat = m.hat;
     if (SCARVES.includes(m.scarf)) p.scarf = m.scarf;
   }
-  look(p, m) { this.setLook(p, m); this.sendRoster(); }
+  look(p, m) {
+    const now = this.now();
+    if (now - (p.lastLook || 0) < 300) return;
+    p.lastLook = now;
+    this.setLook(p, m); this.sendRoster();
+  }
 
   botExtras(p, others) {
     const sk = p.sk;

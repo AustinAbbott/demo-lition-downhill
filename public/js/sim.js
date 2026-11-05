@@ -293,7 +293,13 @@ export function collideSkiers(sk, others, selfId) {
     if (o.id === selfId) continue;
     if (o.st !== 'ski' && o.st !== 'crash' && o.st !== 'frozen') continue;
     const dx = o.x - sk.x, dy = o.y - sk.y;
-    if (dx * dx + dy * dy < 144) { crash(sk, 0.6); return 'bump'; }
+    if (dx * dx + dy * dy < 144) {
+      crash(sk, 0.6);
+      // shove apart so two skiers on the same line don't bump-crash-bump forever
+      sk.x += (sk.x <= o.x ? -1 : 1) * 14;
+      sk.x = Math.max(14, Math.min(WORLD_W - 14, sk.x));
+      return 'bump';
+    }
   }
   return null;
 }

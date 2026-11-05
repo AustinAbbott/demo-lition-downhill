@@ -78,8 +78,9 @@ npm run dev          # → http://localhost:8787
 Open it in two or three browser windows to play against yourself, or click **Practice solo vs. bots**. Practice mode runs the whole room in the page, with no server.
 
 ```bash
-npm test             # headless: simulates full 12-skier rounds and checks the order
+npm test             # headless: full 12-skier rounds, then a 24-skier stress + reconnect/fuzz run
 npm run test:e2e     # 4 real browsers play a round (needs Playwright + the dev server running)
+                     # ...then edge cases: reconnect, two tabs, kick, room reset, phone controls
 ```
 
 `npx wrangler dev` also works and is closer to production. It runs the actual Worker and Durable Object.

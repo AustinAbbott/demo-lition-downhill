@@ -64,7 +64,10 @@ export class Room {
     server.accept();
     this.logic.attach(server);
     server.addEventListener('message', (e) => this.logic.message(server, typeof e.data === 'string' ? e.data : ''));
-    const bye = () => this.logic.detach(server);
+    const bye = () => {
+      this.logic.detach(server);
+      try { server.close(1000, 'bye'); } catch {} // complete the closing handshake
+    };
     server.addEventListener('close', bye);
     server.addEventListener('error', bye);
     return new Response(null, { status: 101, webSocket: client });

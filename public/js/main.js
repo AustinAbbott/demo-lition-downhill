@@ -22,6 +22,9 @@ const ls = {
 let myId;
 try { myId = sessionStorage.getItem('dd.id'); } catch {}
 if (!myId) { myId = Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('dd.id', myId); } catch {} }
+let mySecret;
+try { mySecret = sessionStorage.getItem('dd.secret'); } catch {}
+if (!mySecret) { mySecret = crypto.getRandomValues(new Uint32Array(4)).join('').slice(0, 32); try { sessionStorage.setItem('dd.secret', mySecret); } catch {} }
 let myName = ls.get('dd.name', '');
 let myColor = ls.get('dd.color', COLORS[Math.floor(Math.random() * COLORS.length)]);
 let myHat = HATS.includes(ls.get('dd.hat', '')) ? ls.get('dd.hat') : 'beanie';
@@ -61,7 +64,7 @@ function connect(code, create = false, attempt = 0) {
     ws.onopen = () => {
       retry = 0; $('#conn').hidden = true;
       // only the very first join creates; reconnects rejoin the existing room
-      ws.send(JSON.stringify({ t: 'join', id: myId, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: create && !joined }));
+      ws.send(JSON.stringify({ t: 'join', id: myId, secret: mySecret, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: create && !joined }));
     };
     ws.addEventListener('message', (e) => { if (!joined && e.data.includes('"t":"hello"')) joined = true; });
     ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
@@ -86,7 +89,7 @@ function connectPractice() {
   room.attach(sock);
   G.conn = { send: (o) => room.message(sock, JSON.stringify(o)), close: () => room.detach(sock) };
   G.code = 'SOLO'; G.practice = true;
-  G.conn.send({ t: 'join', id: myId, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: true });
+  G.conn.send({ t: 'join', id: myId, secret: mySecret, name: myName, color: myColor, hat: myHat, scarf: myScarf, create: true });
   for (let i = 0; i < 7; i++) G.conn.send({ t: 'bot' });
 }
 
@@ -106,8 +109,11 @@ function handle(m) {
       setSeed(m.seed);
       G.phase = m.phase; G.phaseStart = performance.now();
       G.me = newSkier(m.x, m.y, ST_NAME[m.st] || 'ski');
+      if (m.secret && m.secret !== mySecret) { mySecret = m.secret; try { sessionStorage.setItem('dd.secret', mySecret); } catch {} }
       G.final = m.final || null;
-      G.snaps = [];
+      G.snaps = []; G.banner = null; G.pops = []; G.eatenSlot = null; G.monFocus = null;
+      if (m.phase !== 'over') { $('#results').hidden = true; G.resultsDismissed = false; }
+      if (m.phase === 'lobby') { G.order = []; G.missed = []; }
       resetExtras(); G.taken = new Set(m.taken || []);
       enterGame();
       if (m.late) banner('YOU MISSED THE LIFT', "SO YOU'LL DEMO FIRST. ENJOY THE SHOW.", 4000);
@@ -262,6 +268,7 @@ addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
   const c = KEYS[e.code];
   if (!c) return;
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
   e.preventDefault();
   unlock();
   if (e.repeat) return;
