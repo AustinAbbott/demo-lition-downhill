@@ -88,7 +88,7 @@ function connectPractice() {
 
 function leave() {
   if (G.conn) G.conn.close();
-  G.conn = null; G.phase = 'none'; G.me = null; G.snaps = []; G.view = null; G.roster = new Map();
+  G.conn = null; G.phase = 'none'; G.me = null; G.snaps = []; G.off = null; G.view = null; G.roster = new Map();
   G.trails.clear(); G.final = null; G.banner = null;
   history.replaceState(null, '', location.pathname);
   $('#hud').hidden = true; $('#results').hidden = true; $('#landing').hidden = false;
@@ -166,7 +166,13 @@ function onPhase(m) {
 
 function onState(m) {
   const now = performance.now();
-  G.snaps.push({ at: now, m });
+  // Place each snapshot on the server's even 50 ms beat (tick number k) instead
+  // of its bumpy arrival time; `G.off` maps server time onto our clock.
+  const st = (m.k || 0) * 50;
+  const off = now - st;
+  if (G.off == null || Math.abs(off - G.off) > 600) { G.off = off; G.snaps = []; }
+  else G.off += (off - G.off) * 0.03;
+  G.snaps.push({ at: st, m });
   if (G.snaps.length > 40) G.snaps.shift();
   G.order = m.o; G.missed = m.ms; G.lastPt = m.pt;
   const mine = m.p.find(e => e[0] === G.you);
@@ -284,30 +290,42 @@ function sendPosition(now) {
   G.conn.send({ t: 'p', x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, d: me.d, s: stCode(me) });
 }
 
-// interpolate other skiers ~110ms in the past for smoothness
+// Show other skiers (and the yeti) slightly in the past, interpolating between
+// server snapshots. If the next snapshot is late, briefly extrapolate instead of
+// freezing, so motion never stutters.
+const INTERP_DELAY = 130;   // ms behind the server
+const MAX_EXTRAP = 120;     // ms we'll guess ahead when a snapshot is late
 function viewState(now) {
   const s = G.snaps;
   if (!s.length) return null;
-  const rt = now - 110;
+  const rt = now - (G.off ?? now) - INTERP_DELAY;
   let a, b;
-  if (rt >= s[s.length - 1].at) a = b = s[s.length - 1];
-  else if (rt <= s[0].at) a = b = s[0];
+  if (s.length === 1 || rt <= s[0].at) a = b = s[s.length === 1 ? 0 : 0];
+  else if (rt >= s[s.length - 1].at) { a = s[s.length - 2]; b = s[s.length - 1]; }
   else for (let i = s.length - 1; i > 0; i--) if (s[i - 1].at <= rt) { a = s[i - 1]; b = s[i]; break; }
   const span = b.at - a.at;
-  const f = span > 0 ? Math.max(0, Math.min(1, (rt - a.at) / span)) : 1;
+  let f = span > 0 ? (rt - a.at) / span : 1;
+  f = Math.max(0, Math.min(1 + (span > 0 ? MAX_EXTRAP / span : 0), f));
   const prev = new Map(a.m.p.map(e => [e[0], e]));
   const players = [];
   for (const e of b.m.p) {
     const p = prev.get(e[0]);
     let x = e[1], y = e[2];
-    if (p && Math.abs(p[2] - e[2]) < 400) { x = p[1] + (e[1] - p[1]) * f; y = p[2] + (e[2] - p[2]) * f; }
+    const moving = e[4] !== ST.eaten && e[4] !== ST.crash;
+    if (p && Math.abs(p[2] - e[2]) < 400) {
+      const ff = moving ? f : Math.min(1, f);  // don't slide crashed/eaten skiers forward
+      x = p[1] + (e[1] - p[1]) * ff; y = p[2] + (e[2] - p[2]) * ff;
+    }
     players.push({ id: e[0], x, y, d: e[3], st: ST_NAME[e[4]] });
   }
   let monster = null;
   const ma = a.m.m, mb = b.m.m;
   if (mb) {
     monster = { x: mb[0], y: mb[1], eat: mb[2] === 1, target: mb[3], mood: MOODS[mb[4] | 0] || 'hunt' };
-    if (ma) { monster.x = ma[0] + (mb[0] - ma[0]) * f; monster.y = ma[1] + (mb[1] - ma[1]) * f; }
+    if (ma) {
+      const ff = mb[2] === 1 ? Math.min(1, f) : f;
+      monster.x = ma[0] + (mb[0] - ma[0]) * ff; monster.y = ma[1] + (mb[1] - ma[1]) * ff;
+    }
   }
   return { players, monster };
 }
@@ -385,59 +403,107 @@ function overviewActive() {
   return G.phase === 'run' && !!G.me && (G.me.st === 'eaten' || G.me.st === 'wait');
 }
 
-function setZoom(z) { Z = z; VW = cv.width / Z; VH = cv.height / Z; }
+function setZoom(z) { Z = z; VW = cv.width / Z; VH = cv.height / Z; G.zoom = Z; }
 
-function overviewCamera(k) {
-  const pts = [];
+// Low-pass the yeti's position for framing so its weaving, zigzags and lunges
+// don't shake the camera. Sideways is smoothed harder than downhill.
+function monsterFocus(dt) {
+  const m = G.view && G.view.monster;
+  if (!m) { G.monFocus = null; return null; }
+  const f = G.monFocus;
+  if (!f || Math.hypot(m.x - f.x, m.y - f.y) > 900) { G.monFocus = { x: m.x, y: m.y }; return G.monFocus; }
+  f.x += (m.x - f.x) * (1 - Math.exp(-dt * 1.5));
+  f.y += (m.y - f.y) * (1 - Math.exp(-dt * 5));
+  return f;
+}
+
+// Critically damped spring: eases in AND out, so swoops (e.g. when you get
+// eaten and the camera hands off to the pack) never start with a lurch.
+function spring(key, cur, target, omega, dt, maxA = Infinity, maxV = Infinity) {
+  const v = (G.vel || (G.vel = {}));
+  let x = cur, vel = v[key] || 0;
+  for (let t = Math.min(dt, 0.1); t > 1e-6; t -= 1 / 120) {
+    const h = Math.min(t, 1 / 120);
+    const acc = Math.max(-maxA, Math.min(maxA, omega * omega * (target - x) - 2 * omega * vel));
+    vel = Math.max(-maxV, Math.min(maxV, vel + acc * h));
+    x += vel * h;
+  }
+  v[key] = vel;
+  return x;
+}
+
+// Spectator pans: cut straight there if it's far (a whip-pan across thousands
+// of pixels of snow is worse than a clean cut), otherwise ease with capped
+// acceleration and speed so it never lurches.
+function panCamera(tx, ty, omega, dt) {
+  if (Math.hypot(tx - G.camX, ty - G.camY) > Math.max(VW, VH) * 2.5) {
+    G.camX = tx; G.camY = ty; if (G.vel) { G.vel.x = 0; G.vel.y = 0; }
+    return;
+  }
+  G.camX = spring('x', G.camX, tx, omega, dt, 4500, 2400);
+  G.camY = spring('y', G.camY, ty, omega, dt, 4500, 2400);
+}
+
+// Hysteresis: a framing decision only flips when the fit is clearly better or
+// clearly worse, so people right on the edge don't make the view pump in and out.
+const GROW = 1.1, SHRINK = 0.93;
+
+function overviewCamera(dt) {
+  const skiers = [];
   for (const p of G.view.players) {
     if (p.st === 'wait' || (G.phase !== 'lobby' && p.st === 'eaten')) continue;
-    pts.push(p.id === G.you && G.me ? [G.me.x, G.me.y] : [p.x, p.y]);
+    skiers.push(p.id === G.you && G.me ? [G.me.x, G.me.y] : [p.x, p.y]);
   }
-  const mon = G.view.monster;
-  if (mon) pts.push([mon.x, mon.y]);
-  if (!pts.length) return false;
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  skiers.sort((a, b) => a[1] - b[1]); // furthest back first
+  const f = monsterFocus(dt);
+  const mon = f ? [f.x, f.y] : null;
+  if (!skiers.length && !mon) return false;
   const pad = 150, minZ = BASE_Z * 0.45;
   const box = (ps) => {
     let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
     for (const [x, y] of ps) { a = Math.min(a, x); b = Math.max(b, x); c = Math.min(c, y); d = Math.max(d, y); }
     return { x0: a, x1: b, y0: c, y1: d, fit: Math.min(cv.width / (b - a + pad * 2), cv.height / (d - c + pad * 2)) };
   };
-  // Everyone, if they fit. Otherwise start from whoever is furthest back (next on
-  // the menu), add the yeti if it fits alongside them, then add skiers in order
-  // up the pack for as long as they still fit. If the yeti doesn't fit, an arrow
-  // at the top of the screen points to it.
-  let bb = box(pts);
-  if (bb.fit < minZ) {
-    const skiers = pts.slice(0, mon ? -1 : undefined).sort((a, b) => a[1] - b[1]);
-    const sel = skiers.length ? [skiers[0]] : [[mon.x, mon.y]];
-    if (mon && skiers.length && box([...sel, [mon.x, mon.y]]).fit >= minZ) sel.push([mon.x, mon.y]);
-    for (let i = 1; i < skiers.length; i++) {
-      if (box([...sel, skiers[i]]).fit < minZ) break;
-      sel.push(skiers[i]);
+  const ov = G.ov || (G.ov = { all: true, n: 1, mon: true });
+  const everyone = mon ? [...skiers, mon] : skiers;
+  const allFit = box(everyone).fit;
+  ov.all = ov.all ? allFit >= minZ * SHRINK : allFit >= minZ * GROW;
+  let bb;
+  if (ov.all || !skiers.length) bb = box(everyone);
+  else {
+    // start from whoever is furthest back (next on the menu), keep the yeti
+    // with them if it fits, then add skiers up the pack while they fit
+    const withMon = (list) => (ov.mon && mon ? [...list, mon] : list);
+    if (mon) {
+      const fm = box([skiers[0], mon]).fit;
+      ov.mon = ov.mon ? fm >= minZ * SHRINK : fm >= minZ * GROW;
     }
-    bb = box(sel);
+    let n = Math.max(1, Math.min(ov.n, skiers.length));
+    while (n > 1 && box(withMon(skiers.slice(0, n))).fit < minZ * SHRINK) n--;
+    while (n < skiers.length && box(withMon(skiers.slice(0, n + 1))).fit >= minZ * GROW) n++;
+    ov.n = n;
+    bb = box(withMon(skiers.slice(0, n)));
   }
+  // ease toward the framing: zoom slowly, pan a bit quicker
   const tz = Math.max(minZ, Math.min(BASE_Z, bb.fit));
-  setZoom(Z + (tz - Z) * Math.min(1, k * 0.6));
-  const cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
-  let tx = cx - VW / 2;
+  setZoom(spring('z', Z, tz, 1.8, dt));
+  let tx = (bb.x0 + bb.x1) / 2 - VW / 2;
+  const ty = (bb.y0 + bb.y1) / 2 - VH / 2;
   if (VW >= WORLD_W + 160) tx = (WORLD_W - VW) / 2;
   else tx = Math.max(-80, Math.min(WORLD_W - VW + 80, tx));
-  G.camX += (tx - G.camX) * k;
-  G.camY += (cy - VH / 2 - G.camY) * k;
+  panCamera(tx, ty, 2.6, dt);
   return true;
 }
 
 function updateCamera(dt) {
-  const kk = 1 - Math.pow(0.0005, dt);
-  if (overviewActive() && overviewCamera(kk)) return;
-  if (Z !== BASE_Z) setZoom(Math.abs(Z - BASE_Z) < 0.01 ? BASE_Z : Z + (BASE_Z - Z) * Math.min(1, kk * 1.5));
+  if (overviewActive() && overviewCamera(dt)) return;
+  G.ov = null;
+  if (Z !== BASE_Z) setZoom(Math.abs(Z - BASE_Z) < 0.01 ? BASE_Z : Z + (BASE_Z - Z) * (1 - Math.exp(-dt * 4)));
   let fx = WORLD_W / 2, fy = G.camY + VH * 0.32 + 40 * dt, follow = 'drift';
   const me = G.me;
+  const mf = monsterFocus(dt);
   if (G.conn && me && me.st !== 'eaten' && me.st !== 'wait') { fx = me.x; fy = me.y; follow = 'me'; }
-  else if (G.view && G.view.monster) { fx = G.view.monster.x; fy = G.view.monster.y; follow = 'other'; }
+  else if (mf) { fx = mf.x; fy = mf.y; follow = 'other'; }
   else if (G.view && G.view.players.length) {
     const alive = G.view.players.filter(p => p.st !== 'eaten');
     if (alive.length) { const lead = alive.reduce((a, b) => (b.y > a.y ? b : a)); fx = lead.x; fy = lead.y; follow = 'other'; }
@@ -447,9 +513,11 @@ function updateCamera(dt) {
   const ty = fy - VH * frac;
   if (VW >= WORLD_W + 160) tx = (WORLD_W - VW) / 2;
   else tx = Math.max(-80, Math.min(WORLD_W - VW + 80, tx));
-  const k = 1 - Math.pow(0.0005, dt);
-  G.camX += (tx - G.camX) * k;
-  G.camY = follow === 'me' ? ty : follow === 'drift' ? G.camY + 50 * dt : G.camY + (ty - G.camY) * k;
+  // following your own skier stays snappy; spectating eases on a spring so it doesn't jerk around
+  if (follow === 'other') { panCamera(tx, ty, 3, dt); return; }
+  G.vel = null;
+  G.camX += (tx - G.camX) * (1 - Math.pow(0.0005, dt));
+  G.camY = follow === 'me' ? ty : G.camY + 50 * dt;
 }
 
 function render(now, dt) {

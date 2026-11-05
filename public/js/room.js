@@ -277,6 +277,7 @@ export class RoomLogic {
   // --- the loop ---------------------------------------------------------------
   tick(dt) {
     this.phaseT += dt;
+    this.tickN = (this.tickN || 0) + 1;
     const all = [...this.players.values()];
 
     if (this.phase === 'count' && this.phaseT >= COUNTDOWN) {
@@ -418,7 +419,7 @@ export class RoomLogic {
     }
     const m = this.monster;
     this.broadcast({
-      t: 's', ph: this.phase, pt: Math.round(this.phaseT * 10) / 10, p,
+      t: 's', k: this.tickN, ph: this.phase, pt: Math.round(this.phaseT * 10) / 10, p,
       m: m ? [Math.round(m.x), Math.round(m.y), m.st === 'eat' ? 1 : 0, m.target, m.st === 'eat' ? 0 : MOODS.indexOf(m.mood)] : null,
       o: this.order, ms: this.missed,
     });
