@@ -25,8 +25,11 @@ Anyone who joins mid-round "missed the lift" and **demos first**.
 | <kbd>↓</kbd> (or S) | Point straight downhill. This is the fastest heading. |
 | <kbd>Space</kbd> (or ↑/W) | Hop over rocks, stumps, moguls and other skiers. A hop won't clear a tree. |
 | <kbd>R</kbd> | Lobby only: go back to the top. |
+| <kbd>M</kbd> | Music on/off. It's remembered per browser, and there's also a **Music** button in the corner. Sound effects have their own **SFX** button. |
 
 Phones get on-screen buttons.
+
+The soundtrack is two original chiptune loops synthesized in the browser, so there are no audio files. An easygoing loop plays in the lobby, and a faster minor-key chase loop starts the moment the Scope Creep shows up.
 
 What's on the mountain:
 - Trees, rocks and stumps knock you down for about a second.
@@ -96,6 +99,7 @@ public/
   js/room.js                  RoomLogic: lobby, phases, bots, the monster, eat order (platform-agnostic)
   js/sprites.js               all pixel art + a 5×7 pixel font, drawn in code
   js/audio.js                 synthesized sound effects
+  js/music.js                 chiptune soundtrack (two loops, sequenced live)
   js/main.js                  input, netcode, rendering, HUD
 src/worker.js                 Cloudflare Worker + Durable Object wrapper around RoomLogic
 dev/server.mjs                zero-dependency local server (same RoomLogic)

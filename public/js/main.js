@@ -5,6 +5,7 @@ import {
 } from './sim.js';
 import * as S from './sprites.js';
 import { sfx, unlock, isMuted, setMuted } from './audio.js';
+import { setTrack, isMusicOn, setMusicOn } from './music.js';
 import { RoomLogic, COLORS } from './room.js';
 
 const $ = (s) => document.querySelector(s);
@@ -182,7 +183,7 @@ const queue = [];
 const held = { L: 0, R: 0 };
 const KEYS = {
   ArrowLeft: 'L', KeyA: 'L', ArrowRight: 'R', KeyD: 'R', ArrowDown: 'D', KeyS: 'D',
-  Space: 'J', ArrowUp: 'J', KeyW: 'J', KeyR: 'reset',
+  Space: 'J', ArrowUp: 'J', KeyW: 'J', KeyR: 'reset', KeyM: 'music',
 };
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
@@ -192,6 +193,7 @@ addEventListener('keydown', (e) => {
   unlock();
   if (e.repeat) return;
   if (c === 'reset') { lobbyReset(); return; }
+  if (c === 'music') { toggleMusic(); return; }
   queue.push(c);
   if (c === 'L' || c === 'R') held[c] = performance.now() + 230;
 });
@@ -778,9 +780,21 @@ $('#close-results').onclick = () => { $('#results').hidden = true; G.resultsDism
 $('#show-results').onclick = () => { G.resultsDismissed = false; showResults(); };
 $('#leave').onclick = () => leave();
 const muteBtn = $('#mute');
-const syncMute = () => { muteBtn.textContent = isMuted() ? 'Sound: off' : 'Sound: on'; };
+const syncMute = () => { muteBtn.textContent = isMuted() ? 'SFX: off' : 'SFX: on'; };
 muteBtn.onclick = () => { setMuted(!isMuted()); syncMute(); muteBtn.blur(); };
 syncMute();
+const musicBtn = $('#music');
+const syncMusic = () => { musicBtn.textContent = isMusicOn() ? 'Music: on' : 'Music: off'; };
+function toggleMusic() { setMusicOn(!isMusicOn()); syncMusic(); }
+musicBtn.onclick = () => { unlock(); toggleMusic(); musicBtn.blur(); };
+syncMusic();
+document.addEventListener('visibilitychange', () => { if (document.hidden) setTrack(null); });
+// cruise in the lobby and on the results screen; chase once the monster is loose
+function musicFor() {
+  if (!G.conn || G.phase === 'none') return null;
+  if (G.phase === 'run' && G.view && G.view.monster) return 'chase';
+  return 'cruise';
+}
 $('#copy-order').onclick = async () => {
   const d = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const lines = [`:skier: Demo order for ${d} (decided by the Scope Creep)`];
@@ -807,6 +821,7 @@ function frame(now) {
     sendPosition(now);
     renderPanels(false);
   }
+  setTrack(musicFor());
   render(now, dt);
   requestAnimationFrame(frame);
 }

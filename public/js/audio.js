@@ -7,6 +7,7 @@ export function unlock() {
   if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; } }
   if (ctx.state === 'suspended') ctx.resume();
 }
+export function getCtx() { return ctx; }
 export function isMuted() { return muted; }
 export function setMuted(m) { muted = m; try { localStorage.setItem('dd.muted', m ? '1' : '0'); } catch {} }
 
