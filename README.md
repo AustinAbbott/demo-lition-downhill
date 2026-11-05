@@ -34,9 +34,12 @@ The soundtrack is three original chiptune loops synthesized in the browser, so t
 
 - **Lobby:** an easygoing loop.
 - **Race:** a faster, driving track that kicks in at the countdown.
-- **Chase:** a minor-key loop that starts the moment the Scope Creep shows up. It gets a little faster with every skier eaten.
+- **Chase:** starts the moment the Scope Creep shows up. It's a frantic minor-key riff with a kick drum, a gritty doubled lead and snare rolls. It speeds up and adds layers as the monster eats more people:
+  - after 3 eaten, faster hi-hats;
+  - after 5, a busier kick;
+  - after 7, the lead doubled an octave up.
 
-What's on the mountain:
+What's on the mountain (it gets more crowded the further down you go):
 - Trees, rocks and stumps knock you down for about a second.
 - Moguls halve your speed.
 - Ramps launch you over everything.
@@ -95,7 +98,7 @@ All the knobs are at the top of `public/js/sim.js`:
 - `MONSTER.catchup*`: how hard it sprints when it's far behind, which also grows with each meal.
 - `MONSTER.eatTime` / `MONSTER.eatTimeMin` / `MONSTER.eatTimeStep`: how long it chews before hunting the next person. Chewing gets quicker with each meal.
 - `MAX_SPEED`, `RAMP_SPEED`: how fast skiers go.
-- `Terrain.chunk()`: how many obstacles there are, and how quickly the mountain gets denser.
+- `TERRAIN`: how crowded the mountain is. It starts at 16 obstacles per 32 m and climbs to about 54, plus bigger and more frequent tree groves, by about 1,500 m. So the longer a round goes, the harder the slope gets.
 
 To flip the late-joiner rule so late people demo last instead, change the order of the `this.final = [...]` line in `RoomLogic.finish()` (`public/js/room.js`).
 

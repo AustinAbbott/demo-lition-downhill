@@ -77,6 +77,19 @@ export const OB = {
   mogul:    { r: 15, oy: -4, kind: 'slow' },
   ramp:     { r: 15, oy: -6, kind: 'ramp' },
 };
+// The mountain gets busier the further down you go, so the longer a round
+// runs, the harder it gets. It's keyed to depth (not the clock) so every
+// client generates the same terrain. A chunk is 512px = 32 m.
+export const TERRAIN = {
+  baseCount: 16,      // obstacles per chunk at the top
+  perChunk: 0.8,      // +obstacles for every chunk further down
+  maxExtra: 38,       // ...up to 16 + 38 = 54 per chunk (from ~1,500 m)
+  groveChance: 0.55,  // chance of a cluster of trees per chunk at the top
+  grovePerChunk: 0.01,
+  groveMaxChance: 0.95,
+  groveGrowEvery: 12, // groves get one tree bigger every 12 chunks (~380 m)
+  secondGroveFrom: 25, // past ~800 m, a second grove can appear in a chunk
+};
 const WEIGHTS = [['tree', 38], ['bigtree', 10], ['deadtree', 5], ['rock', 12], ['stump', 8], ['mogul', 17], ['ramp', 6]];
 const WEIGHT_SUM = WEIGHTS.reduce((s, w) => s + w[1], 0);
 
@@ -95,7 +108,8 @@ export class Terrain {
     ch = [];
     if (c >= 0) {
       const rng = mulberry32(hash2(this.seed, c));
-      const n = Math.floor(16 + Math.min(20, c * 0.6)); // gets denser as you go
+      const T = TERRAIN;
+      const n = Math.floor(T.baseCount + Math.min(T.maxExtra, c * T.perChunk)); // gets denser as you go
       for (let i = 0; i < n; i++) {
         const x = 30 + rng() * (WORLD_W - 60);
         const y = c * CHUNK_H + rng() * CHUNK_H;
@@ -104,11 +118,13 @@ export class Terrain {
         if (y < CLEAR_Y) continue;
         ch.push({ type, x: Math.round(x), y: Math.round(y), v });
       }
-      // the odd little grove
-      if (rng() < 0.55) {
+      // little groves: more likely, bigger, and doubled up deeper down
+      const groves = (rng() < Math.min(T.groveMaxChance, T.groveChance + c * T.grovePerChunk) ? 1 : 0)
+        + (c >= T.secondGroveFrom && rng() < 0.5 ? 1 : 0);
+      for (let gi = 0; gi < groves; gi++) {
         const cx = 120 + rng() * (WORLD_W - 240);
         const cy = c * CHUNK_H + rng() * CHUNK_H;
-        const k = 4 + Math.floor(rng() * 5);
+        const k = 4 + Math.floor(rng() * 5) + Math.min(4, Math.floor(c / T.groveGrowEvery));
         for (let i = 0; i < k; i++) {
           const x = cx + (rng() - 0.5) * 140, y = cy + (rng() - 0.5) * 110;
           const big = rng() < 0.3;
