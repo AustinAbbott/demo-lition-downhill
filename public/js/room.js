@@ -3,7 +3,7 @@
 // the browser's offline practice mode.
 //
 // The room is authoritative for: who's in the room, the phase, the bots, the
-// Scope Creep, and the order people get eaten. Each human's own skier is
+// yeti, and the order people get eaten. Each human's own skier is
 // simulated in their browser (snappy steering) and reported here ~20x/sec;
 // the room sanity-checks those reports so nobody can teleport to safety.
 
@@ -21,7 +21,7 @@ const LOBBY_WRAP_Y = 5200;
 export const ROOM_TTL_MS = 30 * 60 * 1000; // an empty room stays joinable this long
 
 export const COLORS = ['#e63946', '#2a9d8f', '#f4a261', '#457b9d', '#9b5de5', '#f15bb5', '#00bbf9', '#80b918', '#ff7b00', '#3d405b', '#d4a373', '#06d6a0'];
-const BOT_NAMES = ['Ctrl Alt Elite', 'Null Pointer', 'Merge Conflict', 'Flaky Test', 'Hotfix Hank', 'Legacy Larry', 'Tech Debt', 'Prod Pusher', 'Rubber Duck', 'Off-By-One', 'Kernel Panic', 'Stand-up Stan'];
+const BOT_NAMES = ['Frosty', 'Sled Zeppelin', 'Powder Pete', 'Mitten Kitten', 'Avalanche Annie', 'Brr-ian', 'Slushy Sue', 'Snow Biz', 'Icicle Ike', 'Polar Pat', 'Chill Bill', 'Snowflake'];
 
 function cleanName(s) {
   s = String(s || '').normalize('NFKC').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 16);
@@ -460,7 +460,8 @@ export class RoomLogic {
     this.order.push(p.id);
     m.st = 'eat'; m.t = monsterChew(this.order.length - 1); m.x = p.sk.x; m.y = p.sk.y;
     const slot = this.missed.length + this.order.length;
-    this.broadcast({ t: 'ev', k: 'eat', id: p.id, n: slot });
+    // pl = the place they finished: everyone still going (them included) before the chomp
+    this.broadcast({ t: 'ev', k: 'eat', id: p.id, n: slot, pl: aliveBefore });
     const aliveAfter = aliveBefore - 1;
     if (total > 1 ? aliveAfter <= 1 : aliveAfter <= 0) this.endAt = this.phaseT + 2.2;
   }
@@ -489,7 +490,7 @@ export class RoomLogic {
     this.broadcast({ t: 'ev', k: 'drop', pid: p.id });
   }
 
-  // someone skied into a dropped invite: it's used up, they're "in a meeting"
+  // someone skied into dropped snowballs: they're used up, and the skier tumbles
   meetHit(p, id) {
     const i = this.meetings.findIndex(mt => mt.id === id);
     if (i < 0) return;

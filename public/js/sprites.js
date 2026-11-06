@@ -167,38 +167,42 @@ export function skier(pose, color, hat = 'beanie', scarf = 'none') {
 
 // --- pickups ---------------------------------------------------------------------
 const ICON_ART = {
-  coffee: { pal: { s: '#b8c4d6', k: '#1d1b2f', b: '#6b3e1f', w: '#ffffff', r: '#e63946' }, rows: [
+  // hot cocoa: red mug, marshmallows, steam (internal id 'coffee')
+  coffee: { pal: { s: '#b8c4d6', k: '#1d1b2f', b: '#6b3e1f', w: '#ffffff', r: '#e63946', R: '#b5262f' }, rows: [
     '.....s..s...',
     '....s..s....',
     '.....s..s...',
     '..kkkkkkkk..',
-    '..kbbbbbbkkk',
-    '..kwwwwwwk.k',
-    '..kwrrrrwkkk',
-    '..kwwwwwwk..',
-    '...kwwwwk...',
+    '..kwbwwbwkkk',
+    '..krrrrrrk.k',
+    '..krwrrwrkkk',
+    '..krrrrrrk..',
+    '...kRRRRk...',
     '....kkkk....'] },
-  pto: { pal: { g: '#40b85c', G: '#1b7a3c', t: '#8b5a2b', y: '#f4d58d', b: '#4cc9f0' }, rows: [
-    '...gg.gg....',
-    '..gGggGgg...',
-    '.gg..t..gg..',
-    '.....t......',
-    '......t.....',
-    '......t.....',
-    '.....t......',
-    '..yyyyyyyy..',
-    '.yyyyyyyyyy.',
-    'bbbbbbbbbbbb'] },
-  invite: { pal: { k: '#1d1b2f', r: '#e63946', w: '#ffffff', g: '#9aa5b1' }, rows: [
-    '..k.....k...',
-    '.rrrrrrrrrr.',
-    '.rrrrrrrrrr.',
-    '.wwwwwwwwww.',
-    '.wggwggwggw.',
-    '.wwwwwwwwww.',
-    '.wggwggwrrw.',
-    '.wwwwwwwwww.',
-    '.kkkkkkkkkk.'] },
+  // snowman decoy (internal id 'pto')
+  pto: { pal: { k: '#1d1b2f', w: '#ffffff', s: '#c9d6ea', o: '#ff7b00', r: '#e63946' }, rows: [
+    '....kkkk....',
+    '...kwwwwk...',
+    '...kwkwkk...',
+    '...kwwoook..',
+    '....kwwwk...',
+    '..krrrrrrk..',
+    '.kwwwkwwwsk.',
+    '.kwwwwwwwsk.',
+    '.kwwwkwwssk.',
+    '..kkkkkkkk..'] },
+  // a snowball (internal id 'invite')
+  invite: { pal: { k: '#1d1b2f', w: '#ffffff', s: '#c9d6ea', S: '#9fb0cc' }, rows: [
+    '....kkkk....',
+    '..kkwwwwkk..',
+    '.kwwwwwwwsk.',
+    '.kwwwwwwwsk.',
+    'kwwwwwwwwssk',
+    'kwwwwwwwsssk',
+    '.kwwwwwsssk.',
+    '.kswwssssSk.',
+    '..kkssSSkk..',
+    '....kkkk....'] },
 };
 export function icon(type) {
   const key = `ic|${type}`;
@@ -206,21 +210,34 @@ export function icon(type) {
   if (!s) { const a = ICON_ART[type]; s = fromRows(a.rows, a.pal); cache.set(key, s); }
   return s;
 }
-// A dropped meeting invite on the slope: the calendar on a little easel.
+// Snowballs dropped on the slope: a little pile of three. (Function name kept
+// from the work edition, where this was a meeting invite on an easel.)
 export function meetingSign() {
   const key = 'meeting';
   let s = cache.get(key);
   if (s) return s;
   s = canvas(16, 18);
   const g = s.getContext('2d');
-  g.drawImage(icon('invite'), 2, 0);
-  g.fillStyle = '#8b5a2b';
-  g.fillRect(4, 9, 1, 9); g.fillRect(11, 9, 1, 9); g.fillRect(7, 9, 2, 7);
-  g.fillStyle = '#5c3a20'; g.fillRect(3, 17, 3, 1); g.fillRect(10, 17, 3, 1);
+  const pile = fromRows([
+    '.....kkkkk......',
+    '....kwwwwwk.....',
+    '...kwwwwwwsk....',
+    '...kwwwwwssk....',
+    '...kwwwwsssk....',
+    '..kkksssskkkk...',
+    '.kwwwwkkkwwwwk..',
+    'kwwwwwwkwwwwwsk.',
+    'kwwwwwwkwwwwssk.',
+    'kwwwwwskwwwsssk.',
+    'kwwwwsskwwssssk.',
+    '.kwssskkksssSk..',
+    '..kkkkk.kkkkk...',
+    '................',
+    '.ssssssssssssss.'], { k: '#1d1b2f', w: '#ffffff', s: '#c9d6ea', S: '#9fb0cc' });
+  g.drawImage(pile, 0, 3);
   cache.set(key, s);
   return s;
 }
-
 // --- terrain ------------------------------------------------------------------
 function pine(w, h, tiers, variant) {
   const c = canvas(w, h), g = c.getContext('2d');
@@ -348,10 +365,10 @@ export function obstacle(type, v) {
   return s;
 }
 
-// --- the Scope Creep --------------------------------------------------------------
+// --- the Yeti ---------------------------------------------------------------------
 // A classic folklore yeti, drawn from scratch: big shaggy white fur, a
-// blue-grey face, hands and feet, a heavy brow, dark eyes and fangs, and
-// covered in sticky notes (feature requests, obviously).
+// blue-grey face, hands and feet, a heavy brow, dark eyes and fangs, and a
+// party hat (it's an Avalanche Party, after all).
 // Redrawn every frame into a small buffer so it can lumber, swing its arms,
 // look around and chew.
 const CW = 64, CH = 70;
@@ -424,23 +441,17 @@ export function creep(t, look, mouth) {
       px(inner, cy, '#8a99b2'); px(inner - dir, cy, i > 13 ? DEEP : SHADE);
     }
   }
-  // sticky notes stuck all over its fur (it is the Scope Creep, after all)
-  const note = (nx, ny, col, i) => {
-    nx = Math.round(nx); ny = Math.round(ny);
-    rect(nx, ny, 6, 6, col);
-    rect(nx + 1, ny + 5, 5, 1, 'rgba(0,0,0,0.18)');          // shadow along the bottom
-    rect(nx + 1, ny + 2, 4, 1, 'rgba(0,0,0,0.35)');          // scribbled "requirement"
-    rect(nx + 1, ny + 4, 3, 1, 'rgba(0,0,0,0.35)');
-    if (Math.sin(t * 7 + i * 1.9) > 0.2) { px(nx + 5, ny, FUR); px(nx + 4, ny, 'rgba(0,0,0,0.25)'); } // corner flutters
-  };
-  note(19, 33, '#ffd60a', 0);
-  note(38, 39, '#ff8fab', 1);
-  note(26, 47, '#90e0ef', 2);
-  note(41, 27, '#ffd60a', 3);
-  note(20, 5 + (hy - 16), '#b9fbc0', 4);                      // one stuck to its head
+  // a striped party hat, tipped jauntily to one side, bobbing with the head
   {
-    const [sx, sy, hx, hyy] = armPaths[0];                      // one on the swinging left arm
-    note(sx + (hx - sx) * 0.55 - 3, sy + (hyy - sy) * 0.55 - 3, '#ff8fab', 5);
+    const by = 8 + (hy - 16);
+    for (let r = 0; r <= 7; r++) {
+      const y = by - r, half = Math.max(0, (7 - r) * 0.65), cx = 35 + r * 0.55;
+      const x0 = Math.round(cx - half), x1 = Math.round(cx + half);
+      for (let x = x0; x <= x1; x++) px(x, y, x === x0 || x === x1 ? LINE : ((x + r) % 4 < 2 ? '#f15bb5' : '#ffd60a'));
+    }
+    rect(30, by + 1, 11, 1, LINE);                               // brim
+    const tx = Math.round(35 + 7 * 0.55), ty = by - 8;
+    rect(tx - 1, ty - 1, 3, 2, '#00bbf9');                       // pompom
   }
   // big blue-grey feet
   for (const [lx, fy] of feet) {

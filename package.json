@@ -2,7 +2,7 @@
   "name": "demo-lition-downhill",
   "version": "1.0.0",
   "private": true,
-  "description": "A multiplayer ski game that picks the weekly demo order. The order you get eaten is the order you demo.",
+  "description": "Avalanche Party: a multiplayer ski game for the whole family. Outski the yeti; last skier standing wins.",
   "type": "module",
   "scripts": {
     "dev": "node dev/server.mjs",

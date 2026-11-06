@@ -19,7 +19,7 @@ const SIDESTEP = 75;              // shuffling sideways when fully turned
 export const DIR_ANGLE = [0, 0.42, 0.95, Math.PI / 2];
 const DIR_SPEED = [MAX_SPEED, 330, 220, 0];
 
-// The Scope Creep starts sluggish and gets more aggressive the longer it's
+// The yeti starts sluggish and gets more aggressive the longer it's
 // loose AND with every skier it eats (it literally grows). Speeds are px/s;
 // a skier pointed straight downhill does MAX_SPEED (380).
 export const MONSTER = {
@@ -40,7 +40,7 @@ export const MONSTER = {
 };
 // Moods make it erratic. Between moods it hunts (with a wobbly weave);
 // every few seconds it rolls a new one. `w` = pick weight, `secs` = duration.
-export const MOODS = ['hunt', 'lunge', 'sniff', 'zigzag', 'roar', 'fickle', 'ooo']; // 'ooo' = foiled by PTO
+export const MOODS = ['hunt', 'lunge', 'sniff', 'zigzag', 'roar', 'fickle', 'ooo']; // 'ooo' = fooled by a snowman decoy
 export const MOOD = {
   lunge:  { w: 25, secs: 0.9, speed: 1.75 },        // sudden burst when it's close
   sniff:  { w: 16, secs: 1.3, speed: 0.25 },        // distracted by a tree; wanders sideways
@@ -61,13 +61,16 @@ export function monsterChew(meals) {
 }
 
 // --- extras: pickups, emotes, cosmetics -------------------------------------
+// Internal item ids are kept stable for the network protocol:
+//   coffee = hot cocoa (speed burst), pto = snowman decoy (the yeti eats it
+//   instead of you, once), invite = snowballs you drop behind you (trip people).
 export const ITEMS = { coffee: 45, invite: 35, pto: 20 };   // pick weights
-export const ITEM_LABEL = { coffee: '+COFFEE', invite: '+MEETING INVITE', pto: '+PTO' };
+export const ITEM_LABEL = { coffee: '+HOT COCOA', invite: '+SNOWBALLS', pto: '+SNOWMAN DECOY' };
 export const COFFEE_SECS = 3, COFFEE_BOOST = 1.35;         // speed burst
-export const PTO_IMMUNE_SECS = 2.5;                         // grace after PTO saves you
-export const MEETING_SECS = 1.6;                            // stuck "in a meeting"
+export const PTO_IMMUNE_SECS = 2.5;                         // grace after a decoy saves you
+export const MEETING_SECS = 1.6;                            // tumbling after hitting snowballs
 export const MEETING_TTL = 25, MAX_INVITES = 2, GRAB_RADIUS = 16;
-export const EMOTES = ['SORRY!', 'GG', 'HI!', 'YIKES!'];
+export const EMOTES = ['WHEEE!', 'GG', 'HI!', 'YIKES!'];
 export const HATS = ['beanie', 'cowboy', 'tophat', 'crown', 'party', 'viking', 'propeller', 'chef'];
 export const SCARVES = ['none', 'red', 'gold', 'mint', 'navy'];
 

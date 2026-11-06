@@ -2,7 +2,7 @@
 // Three original loops that escalate with the game:
 //   cruise — lobby / warm-up / results: breezy, major key
 //   race   — from the countdown: driving 8th-note bass, backbeat, faster
-//   chase  — once the Scope Creep is loose: minor key, kick drum, gritty
+//   chase  — once the yeti is loose: minor key, kick drum, gritty
 //            doubled lead, snare fills; speeds up and piles on layers
 //            (16th hats, busier kick, octave lead) as the monster eats
 // Going up in intensity switches immediately (punchier); going back down to
@@ -73,7 +73,7 @@ const CHASE = {
   leadWave: 'square', leadVol: 0.44,
   double: { interval: -12, wave: 'sawtooth', vol: 0.16 }, // gritty octave-down twin
   fill: true,                                             // snare roll every 4th bar
-  // layers that pile on as the Scope Creep eats more people
+  // layers that pile on as the yeti eats more people
   layers: [
     { meals: 3, hatsAll: true },          // 16th-note hats
     { meals: 5, kickExtra: [6, 10, 14] }, // busier kick

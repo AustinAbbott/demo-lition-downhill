@@ -50,7 +50,7 @@ await p3.click('#join-invite');
 await p3.waitForFunction(() => window.__dd && window.__dd.you);
 
 // host adds named bot + random bots
-await host.fill('#bot-name', 'Priya (OOO)');
+await host.fill('#bot-name', 'Priya (away)');
 await host.click('#add-bot');
 await host.click('#add-bot');
 await host.click('#add-bot');

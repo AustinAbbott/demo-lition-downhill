@@ -37,7 +37,7 @@ const G = {
   you: null, me: null,
   hostId: null, roster: new Map(),
   snaps: [], view: null, lastPt: 0,
-  order: [], missed: [], final: null, survivor: null,
+  order: [], missed: [], final: null, survivor: null, places: {},
   trails: new Map(), banner: null, pops: [],
   camX: WORLD_W / 2 - 400, camY: -200,
   lastSend: 0, lastBeep: 0, eatenSlot: null, resultsDismissed: false,
@@ -113,10 +113,10 @@ function handle(m) {
       G.final = m.final || null;
       G.snaps = []; G.banner = null; G.pops = []; G.eatenSlot = null; G.monFocus = null;
       if (m.phase !== 'over') { $('#results').hidden = true; G.resultsDismissed = false; }
-      if (m.phase === 'lobby') { G.order = []; G.missed = []; }
+      if (m.phase === 'lobby') { G.order = []; G.missed = []; G.places = {}; }
       resetExtras(); G.taken = new Set(m.taken || []);
       enterGame();
-      if (m.late) banner('YOU MISSED THE LIFT', "SO YOU'LL DEMO FIRST. ENJOY THE SHOW.", 4000);
+      if (m.late) banner('YOU MISSED THE LIFT', "WATCH THIS ROUND - YOU'RE IN THE NEXT ONE", 4000);
       break;
     }
     case 'roster':
@@ -160,7 +160,7 @@ function onPhase(m) {
     if (sp) G.me = newSkier(sp[0], sp[1], m.ph === 'count' ? 'frozen' : 'ski');
   }
   if (m.ph === 'count') {
-    G.order = []; G.missed = []; G.final = null; G.eatenSlot = null; G.lastBeep = 4;
+    G.order = []; G.missed = []; G.places = {}; G.final = null; G.eatenSlot = null; G.lastBeep = 4;
     G.resultsDismissed = false; $('#results').hidden = true; G.banner = null;
   } else if (m.ph === 'run') {
     if (G.me && G.me.st === 'frozen') G.me.st = 'ski';
@@ -169,7 +169,7 @@ function onPhase(m) {
     G.final = m.final; G.survivor = m.survivor; G.resultsDismissed = false;
     showResults(); sfx.win();
   } else if (m.ph === 'lobby') {
-    G.final = null; G.order = []; G.missed = []; G.eatenSlot = null; G.banner = null;
+    G.final = null; G.order = []; G.missed = []; G.places = {}; G.eatenSlot = null; G.banner = null;
     $('#results').hidden = true;
   }
   renderLobby(); renderPanels(true);
@@ -209,16 +209,16 @@ function onEvent(m) {
       else sfx.item();
     }
   } else if (m.k === 'drop') {
-    say(m.pid, 'SENDING INVITE...', 1400, '#000080');
+    say(m.pid, 'SNOWBALLS!', 1400, '#000080');
     if (m.pid === G.you) sfx.drop();
   } else if (m.k === 'meet') {
     const by = nameOf(m.by);
-    say(m.pid, `IN A MEETING (${by})`, (MEETING_SECS + 0.6) * 1000, '#e63946');
+    say(m.pid, `SNOWBALLED (${by})`, (MEETING_SECS + 0.6) * 1000, '#e63946');
     if (m.by === G.you) sfx.item();
   } else if (m.k === 'pto') {
     const who = m.pid === G.you ? 'YOU ARE' : `${nameOf(m.pid)} IS`;
-    banner(`${who} ON PTO!`, 'THE SCOPE CREEP WILL CIRCLE BACK', 2200);
-    say(m.pid, 'OUT OF OFFICE', 2000, '#2a9d8f');
+    banner(`${who}'S SNOWMAN DECOY!`, 'THE YETI ATE A SNOWMAN INSTEAD', 2200);
+    say(m.pid, 'DECOY!', 2000, '#2a9d8f');
     sfx.pto();
   } else if (m.k === 'emote') {
     say(m.pid, EMOTES[m.i] || '...', 2200, '#1d1b2f');
@@ -227,19 +227,23 @@ function onEvent(m) {
     sfx.roar();
     G.shakeUntil = performance.now() + 650;
   } else if (m.k === 'spawn') {
-    banner('THE SCOPE CREEP IS LOOSE!', 'IT EATS WHOEVER IS FURTHEST BACK', 2800);
+    banner('THE YETI IS LOOSE!', 'IT EATS WHOEVER IS FURTHEST BACK', 2800);
     sfx.spawn();
   } else if (m.k === 'eat') {
     const p = G.roster.get(m.id);
     const name = p ? p.name : '???';
     const mine = m.id === G.you;
-    if (mine) G.eatenSlot = m.n;
+    const place = m.pl || null; // finishing place (older servers don't send it)
+    if (place) G.places[m.id] = place;
+    if (mine) G.eatenSlot = place;
     if (!G.order.includes(m.id)) G.order = [...G.order, m.id];
     const meals = G.order.length;
     const hungrier = meals > 0 && meals % 3 === 0 ? ' - AND IT JUST GOT FASTER' : '';
-    banner('CHOMP!', (mine ? `THAT'S YOU. YOU DEMO #${m.n}` : `${name} DEMOS #${m.n}`) + hungrier, 2400);
+    const left = place ? place - 1 : null;
+    const tail = left == null ? '' : left === 1 ? ' - 1 SKIER LEFT' : ` - ${left} LEFT`;
+    banner('CHOMP!', (mine ? `THAT'S YOU!${place ? ` YOU FINISHED ${ordinal(place)}` : ''}` : `${name} IS OUT${tail}`) + hungrier, 2400);
     const snap = G.view && G.view.monster;
-    if (snap) G.pops.push({ x: snap.x, y: snap.y, n: m.n, at: performance.now() });
+    if (snap) G.pops.push({ x: snap.x, y: snap.y, label: place ? ordinal(place) : '#' + m.n, at: performance.now() });
     sfx.chomp();
   }
   renderPanels(true);
@@ -778,7 +782,7 @@ function render(now, dt) {
   for (const p of G.pops) {
     const k = (now - p.at) / 1600;
     const x = sx(p.x), y = sy(p.y) - (50 + k * 70) * Z;
-    const s = 2 * ts, label = '#' + p.n, w = S.textWidth(label, s);
+    const s = 2 * ts, label = p.label, w = S.textWidth(label, s);
     g.globalAlpha = 1 - k * k;
     g.fillStyle = '#ffd60a'; g.fillRect(x - w / 2 - 4 * ts, y - 4 * ts, w + 8 * ts, 7 * s + 8 * ts);
     S.drawText(g, label, Math.round(x - w / 2), Math.round(y), s, '#1d1b2f');
@@ -860,7 +864,7 @@ function drawCreep(m, now) {
   const jolt = m.mood === 'roar' ? Math.round(Math.sin(now / 30) * 1.5 * Z) : 0;
   g.drawImage(img, Math.round(sx(m.x) - w / 2) + jolt, Math.round(sy(m.y + 10) - h - bounce), w, h);
   // speech bubble so everyone can tell what mood it's in
-  const line = { sniff: '?', lunge: '!', roar: 'ROAAAR!', fickle: 'ACTUALLY...', ooo: 'OUT OF OFFICE?!' }[m.mood];
+  const line = { sniff: '?', lunge: '!', roar: 'ROAAAR!', fickle: 'ACTUALLY...', ooo: 'A SNOWMAN?!' }[m.mood];
   if (line && !m.eat) {
     const ts = Math.max(1, Math.round(Z)) * (line.length === 1 ? 2 : 1);
     drawSpeech(Math.round(sx(m.x) + w * 0.18), Math.round(sy(m.y + 10) - h - 4 * Z), line,
@@ -923,7 +927,7 @@ function drawOverlay(now) {
     bigText('GET READY', cy - 20 * ts + h + 14 * ts, 3 * ts, '#1d1b2f', '#ffffff');
   } else if (G.phase === 'run' && G.lastPt < MONSTER.grace && !(G.view && G.view.monster) && !(G.me && G.me.st === 'wait')) {
     const n = Math.max(0, Math.ceil(MONSTER.grace - G.lastPt));
-    if (n <= 10) bigText(`SCOPE CREEP ARRIVES IN ${n}`, bottomY() - 70 * ts, 2 * ts, '#5a4fcf', '#ffffff');
+    if (n <= 10) bigText(`THE YETI ARRIVES IN ${n}`, bottomY() - 70 * ts, 2 * ts, '#5a4fcf', '#ffffff');
   }
 
   if (G.banner && now < G.banner.until) {
@@ -934,10 +938,10 @@ function drawOverlay(now) {
 
   const me = G.me;
   if (me && me.st === 'eaten' && G.phase === 'run' && !overviewActive()) {
-    bigText(G.eatenSlot ? `YOU DEMO #${G.eatenSlot}` : 'YOU GOT EATEN', bottomY() - 90 * ts, 3 * ts, '#ffffff', '#5a4fcf');
-    bigText('SPECTATING THE SCOPE CREEP', bottomY() - 60 * ts, ts, '#1d1b2f', '#ffffff');
+    bigText(G.eatenSlot ? `YOU FINISHED ${ordinal(G.eatenSlot)}` : 'YOU GOT EATEN', bottomY() - 90 * ts, 3 * ts, '#ffffff', '#5a4fcf');
+    bigText('WATCHING THE YETI', bottomY() - 60 * ts, ts, '#1d1b2f', '#ffffff');
   } else if (me && me.st === 'wait' && G.phase === 'run') {
-    bigText("MISSED THE LIFT: YOU'RE DEMOING FIRST", bottomY() - 70 * ts, 2 * ts, '#1d1b2f', '#ffffff');
+    bigText("MISSED THE LIFT: YOU'RE IN NEXT ROUND", bottomY() - 70 * ts, 2 * ts, '#1d1b2f', '#ffffff');
   }
 
   // monster off-screen indicator
@@ -955,7 +959,7 @@ function drawOverlay(now) {
       const danger = dist < 25 && Math.floor(now / 200) % 2 === 0;
       g.fillStyle = danger ? '#e63946' : '#5a4fcf';
       g.beginPath(); g.moveTo(x, 6 * ts); g.lineTo(x - 8 * ts, 18 * ts); g.lineTo(x + 8 * ts, 18 * ts); g.closePath(); g.fill();
-      const label = `SCOPE CREEP ${dist}M`;
+      const label = `YETI ${dist}M`;
       const w = S.textWidth(label, ts);
       S.drawText(g, label, Math.round(Math.max(pad - 8 * ts, Math.min(cv.width - pad - w + 8 * ts, x - w / 2))), 22 * ts, ts, g.fillStyle, '#ffffff');
     }
@@ -969,7 +973,7 @@ function drawOverlay(now) {
     const big = 3 * ts, small = ts;
     const x = 14 * dpr;
     const y = innerWidth <= 700 ? cv.height * 0.42 : cv.height - 14 * dpr - 7 * big - 10 * small;
-    const label = me.st === 'eaten' ? (G.eatenSlot ? `YOU DEMO #${G.eatenSlot} - MADE IT` : 'YOU MADE IT') : 'DISTANCE';
+    const label = me.st === 'eaten' ? (G.eatenSlot ? `${ordinal(G.eatenSlot)} PLACE - MADE IT` : 'YOU MADE IT') : 'DISTANCE';
     S.drawText(g, label, x, y, small, '#1d1b2f', '#ffffff');
     S.drawText(g, `${metres(me.y)}M`, x, y + 10 * small, big, me.st === 'eaten' ? '#5a4fcf' : '#000080', '#ffffff');
   }
@@ -989,7 +993,7 @@ function drawInventory(ts) {
     S.drawText(g, label, x, y + ic.height * sc + 4 * ts, ts, '#1d1b2f', '#ffffff');
     x += ic.width * sc + 14 * ts;
   };
-  if (G.myPto) slot('pto', 'PTO');
+  if (G.myPto) slot('pto', 'DECOY');
   if (G.myInv > 0) slot('invite', `x${G.myInv} ${innerWidth <= 700 ? 'TAP' : 'E'}`);
 }
 
@@ -1028,7 +1032,7 @@ function renderPanels(force) {
   lastPanels = now;
   if (!G.conn) return;
 
-  // demo order so far
+  // who's been eaten so far, in order
   const ol = $('#order-list');
   ol.replaceChildren();
   const order = [...(G.missed || []), ...(G.order || [])];
@@ -1054,8 +1058,8 @@ function renderPanels(force) {
       ul.append(li(`<span class="num">${i + 1}.</span>${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}${r.bot ? ' 🤖' : ''}</span><span class="meta">${metres(p.y)} m</span>`, (p.id === G.you ? 'me ' : '') + (r.on === false ? 'off' : '')));
     });
     for (const p of eaten) {
-      const slot = G.missed.length + G.order.indexOf(p.id) + 1;
-      ul.append(li(`<span class="num">🍽</span>${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}</span><span class="meta">${metres(p.y)} m · demos #${slot}</span>`, 'gone' + (p.id === G.you ? ' me' : '')));
+      const pl = G.places[p.id];
+      ul.append(li(`<span class="num">🍽</span>${sw(colorOf(p.id))}<span class="nm">${esc(nameOf(p.id))}</span><span class="meta">${metres(p.y)} m${pl ? ' · ' + ordinal(pl) : ''}</span>`, 'gone' + (p.id === G.you ? ' me' : '')));
     }
     $('#abort').hidden = G.hostId !== G.you;
   }
@@ -1092,13 +1096,25 @@ function renderLobby() {
   $('#host-name').textContent = h ? h.name : 'the host';
 }
 
+// Final standings, winner first: the server's list is in the order people
+// were eaten (late joiners first, survivors last), so flip it and put anyone
+// who joined mid-round at the bottom.
+function standings() {
+  const fin = G.final || [], late = G.missed || [];
+  return [...fin.filter(f => !late.includes(f.id)).reverse(), ...fin.filter(f => late.includes(f.id))];
+}
+function ordinal(n) {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'TH' : ({ 1: 'ST', 2: 'ND', 3: 'RD' }[n % 10] || 'TH');
+  return n + s;
+}
+
 function showResults() {
   const ol = $('#final-list');
   ol.replaceChildren();
-  for (const f of G.final || []) {
+  for (const f of standings()) {
     const tags = [];
-    if (G.missed && G.missed.includes(f.id)) tags.push('<span class="tagpill">missed the lift</span>');
-    if (f.id === G.survivor) tags.push('<span class="tagpill win">last one standing</span>');
+    if (G.missed && G.missed.includes(f.id)) tags.push('<span class="tagpill">joined late</span>');
+    if (f.id === G.survivor) tags.push('<span class="tagpill win">🏆 winner</span>');
     if (f.bot) tags.push('<span class="tagpill">bot</span>');
     const dist = G.missed && G.missed.includes(f.id) ? '' : `<span class="dist">${f.dist ?? 0} m</span>`;
     ol.append(li(`${sw(f.color || '#888')}<span class="nm">${esc(f.name)}</span>${tags.join('')}${dist}`));
@@ -1126,12 +1142,9 @@ function drawLogo() {
   const c = $('#logo'), lg = c.getContext('2d');
   lg.imageSmoothingEnabled = false;
   lg.fillStyle = '#f7fbff'; lg.fillRect(0, 0, c.width, c.height);
-  // "DEMO" gets the emphasis: it's the whole point
-  S.drawText(lg, 'DEMO', 8, 8, 2, '#e63946');
-  S.drawText(lg, '-LITION', 8 + S.textWidth('DEMO-', 2) - S.textWidth('-', 2), 8, 2, '#000080');
-  S.drawText(lg, 'DOWNHILL', 8, 28, 2, '#000080');
-  lg.fillStyle = '#5a4fcf';
-  S.drawText(lg, 'WHO DEMOS FIRST?', 8, 50, 1, '#555');
+  S.drawText(lg, 'AVALANCHE', 8, 8, 2, '#000080');
+  S.drawText(lg, 'PARTY', 8, 28, 2, '#e63946');
+  S.drawText(lg, 'LAST ONE STANDING WINS', 8, 50, 1, '#555');
   const sk = S.skier(1, myColor, myHat, myScarf);
   lg.drawImage(sk, 164, 18, sk.width * 2, sk.height * 2);
   const t = S.obstacle('tree', 2);
@@ -1240,7 +1253,7 @@ async function roomInfo(code) {
 function describeRoom(info) {
   const whose = info.host ? `${info.host}'s` : 'The';
   const n = info.skiers + info.bots;
-  if (info.phase === 'run' || info.phase === 'count') return `${whose} round is already going. You'll join as "missed the lift" and demo first.`;
+  if (info.phase === 'run' || info.phase === 'count') return `${whose} round is already going. You'll watch this one and play the next.`;
   if (info.phase === 'over') return `${whose} room: results are up, and the next round starts soon.`;
   return `${whose} lobby · ${n} skier${n === 1 ? '' : 's'} warming up`;
 }
@@ -1327,9 +1340,9 @@ function musicFor() {
 }
 $('#copy-order').onclick = async () => {
   const d = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const lines = [`:skier: Demo order for ${d} (decided by the Scope Creep)`];
-  (G.final || []).forEach((f, i) => {
-    const note = G.missed && G.missed.includes(f.id) ? ' (missed the lift)' : f.id === G.survivor ? ' (last one standing)' : '';
+  const lines = [`⛷️ Avalanche Party results, ${d}`];
+  standings().forEach((f, i) => {
+    const note = G.missed && G.missed.includes(f.id) ? ' (joined late)' : f.id === G.survivor ? ' 🏆' : '';
     const dist = G.missed && G.missed.includes(f.id) ? '' : ` · ${f.dist ?? 0} m`;
     lines.push(`${i + 1}. ${f.name}${note}${dist}`);
   });
