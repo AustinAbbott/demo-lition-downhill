@@ -40,7 +40,7 @@ export class RoomLogic {
     this.round = 0;
     this.order = [];            // ids in the order they were eaten
     this.missed = [];           // ids who joined after the start
-    this.final = null;          // final demo order (ids) once a round ends
+    this.final = null;          // final eaten order (ids) once a round ends
     this.monster = null;
     this.rnd = mulberry32(randomSeed());
     this.newMountain();
@@ -59,7 +59,7 @@ export class RoomLogic {
   newMountain() {
     this.seed = randomSeed(); this.terrain = new Terrain(this.seed);
     this.taken = new Set();   // pickup ids already grabbed this mountain
-    this.meetings = [];       // dropped meeting invites on the slope
+    this.meetings = [];       // snowball piles dropped on the slope
     this.meetN = this.meetN || 0;
   }
 
@@ -442,7 +442,7 @@ export class RoomLogic {
       const ex = p.sk.x - m.x, ey = p.sk.y - m.y;
       if (ex * ex + ey * ey >= r2 || p.ptoT > 0) continue;
       if (p.pto) {
-        // out of office! the yeti is baffled for a moment and you slip away
+        // snowman decoy! the yeti chomps it instead, is baffled, and you slip away
         p.pto = false; p.ptoT = PTO_IMMUNE_SECS;
         m.mood = 'ooo'; m.moodT = 1.4; m.sniffDir = ex >= 0 ? -1 : 1;
         this.broadcast({ t: 'ev', k: 'pto', pid: p.id });
@@ -466,7 +466,7 @@ export class RoomLogic {
     if (total > 1 ? aliveAfter <= 1 : aliveAfter <= 0) this.endAt = this.phaseT + 2.2;
   }
 
-  // --- extras: pickups, meeting invites, emotes, cosmetics ---------------------
+  // --- extras: pickups, snowballs, emotes, cosmetics ---------------------------
   extrasLive() { return this.phase === 'lobby' || this.phase === 'run'; }
   alive(p) { return p.sk && p.sk.st !== 'eaten' && p.sk.st !== 'wait' && p.sk.st !== 'frozen'; }
 
@@ -530,7 +530,7 @@ export class RoomLogic {
     }
     const mt = hitMeeting(sk, this.meetings, p.id);
     if (mt) { crash(sk, MEETING_SECS); this.meetHit(p, mt.id); }
-    // drop an invite on someone close behind (sometimes)
+    // drop snowballs on someone close behind (sometimes)
     if (p.invites > 0 && this.rnd() < 0.03) {
       const victim = others.find(o => o.id !== p.id && o.st === 'ski' && o.y < sk.y - 40 && o.y > sk.y - 240 && Math.abs(o.x - sk.x) < 70);
       if (victim) this.drop(p);

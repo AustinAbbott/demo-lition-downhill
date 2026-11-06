@@ -351,7 +351,7 @@ export function botThink(sk, brain, terrain, rnd, dt) {
   return best < sk.d ? 'L' : 'R';
 }
 
-// A dropped meeting invite that this skier ran into (not their own; hops clear it).
+// Dropped snowballs that this skier ran into (not their own; hops clear them).
 export function hitMeeting(sk, meetings, selfId) {
   if (sk.st !== 'ski' || sk.inv > 0) return null;
   for (const m of meetings) {

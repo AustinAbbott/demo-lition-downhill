@@ -210,8 +210,7 @@ export function icon(type) {
   if (!s) { const a = ICON_ART[type]; s = fromRows(a.rows, a.pal); cache.set(key, s); }
   return s;
 }
-// Snowballs dropped on the slope: a little pile of three. (Function name kept
-// from the work edition, where this was a meeting invite on an easel.)
+// Snowballs dropped on the slope: a little pile of three.
 export function meetingSign() {
   const key = 'meeting';
   let s = cache.get(key);

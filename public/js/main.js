@@ -980,7 +980,7 @@ function drawOverlay(now) {
   if ((G.phase === 'run' || G.phase === 'lobby') && me && me.st !== 'eaten' && me.st !== 'wait' && (G.myPto || G.myInv > 0)) drawInventory(ts);
 }
 
-// what you're holding: PTO (saves you once) and meeting invites (E to drop)
+// what you're holding: a snowman decoy (saves you once) and snowballs (E to drop)
 function drawInventory(ts) {
   const dpr = cv.width / innerWidth, sc = 2 * ts;
   const x0 = 14 * dpr;
