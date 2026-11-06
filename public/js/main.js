@@ -487,12 +487,14 @@ function monsterFocus(dt) {
 
 // Critically damped spring: eases in AND out, so swoops (e.g. when you get
 // eaten and the camera hands off to the pack) never start with a lurch.
-function spring(key, cur, target, omega, dt, maxA = Infinity, maxV = Infinity) {
+// targetVel lets it move WITH a moving target instead of trailing behind it
+// (a plain spring chasing something at speed v sits 2v/omega behind it).
+function spring(key, cur, target, omega, dt, maxA = Infinity, maxV = Infinity, targetVel = 0) {
   const v = (G.vel || (G.vel = {}));
   let x = cur, vel = v[key] || 0;
   for (let t = Math.min(dt, 0.1); t > 1e-6; t -= 1 / 120) {
     const h = Math.min(t, 1 / 120);
-    const acc = Math.max(-maxA, Math.min(maxA, omega * omega * (target - x) - 2 * omega * vel));
+    const acc = Math.max(-maxA, Math.min(maxA, omega * omega * (target - x) + 2 * omega * (targetVel - vel)));
     vel = Math.max(-maxV, Math.min(maxV, vel + acc * h));
     x += vel * h;
   }
@@ -503,18 +505,55 @@ function spring(key, cur, target, omega, dt, maxA = Infinity, maxV = Infinity) {
 // Spectator pans: cut straight there if it's far (a whip-pan across thousands
 // of pixels of snow is worse than a clean cut), otherwise ease with capped
 // acceleration and speed so it never lurches.
+// The target's own velocity is estimated (smoothed, capped at skier speed, and
+// ignoring framing jumps like someone joining the shot) so the camera keeps
+// pace with a pack skiing downhill rather than letting it slide off the bottom.
+const CAM_TV_MAX = 700;
+function targetVelocity(tx, ty, dt) {
+  const tv = G.tv;
+  if (!tv || dt <= 0) { G.tv = { x: tx, y: ty, vx: 0, vy: 0 }; return G.tv; }
+  const rx = (tx - tv.x) / dt, ry = (ty - tv.y) / dt;
+  tv.x = tx; tv.y = ty;
+  if (Math.hypot(rx, ry) > 1600) return tv; // a reframe, not motion
+  const k = 1 - Math.exp(-dt * 8);
+  tv.vx += (Math.max(-CAM_TV_MAX, Math.min(CAM_TV_MAX, rx)) - tv.vx) * k;
+  tv.vy += (Math.max(-CAM_TV_MAX, Math.min(CAM_TV_MAX, ry)) - tv.vy) * k;
+  return tv;
+}
 function panCamera(tx, ty, omega, dt) {
   if (Math.hypot(tx - G.camX, ty - G.camY) > Math.max(VW, VH) * 2.5) {
     G.camX = tx; G.camY = ty; if (G.vel) { G.vel.x = 0; G.vel.y = 0; }
+    G.tv = null;
     return;
   }
-  G.camX = spring('x', G.camX, tx, omega, dt, 4500, 2400);
-  G.camY = spring('y', G.camY, ty, omega, dt, 4500, 2400);
+  const tv = targetVelocity(tx, ty, dt);
+  G.camX = spring('x', G.camX, tx, omega, dt, 4500, 2400, tv.vx);
+  G.camY = spring('y', G.camY, ty, omega, dt, 4500, 2400, tv.vy);
 }
 
 // Hysteresis: a framing decision only flips when the fit is clearly better or
 // clearly worse, so people right on the edge don't make the view pump in and out.
 const GROW = 1.1, SHRINK = 0.93;
+
+// The strip of screen (as fractions of its height) where the host's skier
+// can't be hidden by the lobby UI at its current screen x: below the room-code
+// banner / lobby window, above the lobby window / touch buttons. Measured from
+// the real layout so it works on any screen.
+function clearBand(meSX) {
+  const H = innerHeight;
+  let top = innerWidth > 700 ? 0.3 : 0.06, bot = 0.7; // 0.3 clears the room-code banner on desktop
+  for (const id of ['#lobby-panel', '#touch']) {
+    const el = $(id);
+    if (!el || el.hidden) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height === 0 || r.width === 0) continue; // display:none etc.
+    if (meSX < r.left - 40 || meSX > r.right + 40) continue; // not above/below it: it can't hide you
+    if (r.top < H * 0.35) top = Math.max(top, r.bottom / H + 0.05);
+    else bot = Math.min(bot, r.top / H - 0.06);
+  }
+  if (bot - top < 0.12) { const mid = (top + bot) / 2; top = mid - 0.06; bot = mid + 0.06; }
+  return [top, bot];
+}
 
 function overviewCamera(dt) {
   const skiers = [];
@@ -522,15 +561,25 @@ function overviewCamera(dt) {
     if (p.st === 'wait' || (G.phase !== 'lobby' && p.st === 'eaten')) continue;
     skiers.push(p.id === G.you && G.me ? [G.me.x, G.me.y] : [p.x, p.y]);
   }
-  skiers.sort((a, b) => a[1] - b[1]); // furthest back first
+  // During the race, frame from whoever is furthest back (next on the menu).
+  // In the lobby the host is warming up too, so frame around their own skier
+  // and add whoever is nearest; someone hitting R doesn't yank the shot away.
+  const meXY = G.phase === 'lobby' && G.me && G.me.st !== 'wait' ? [G.me.x, G.me.y] : null;
+  if (meXY) skiers.sort((a, b) => Math.hypot(a[0] - meXY[0], a[1] - meXY[1]) - Math.hypot(b[0] - meXY[0], b[1] - meXY[1]));
+  else skiers.sort((a, b) => a[1] - b[1]); // furthest back first
   const f = monsterFocus(dt);
   const mon = f ? [f.x, f.y] : null;
   if (!skiers.length && !mon) return false;
   const pad = 150, minZ = BASE_Z * 0.45;
+  // lobby: the shot is centred in the strip the lobby UI leaves clear, so the
+  // group has to fit in the room above and below that centre, not the whole screen
+  // (sat a little high so the host can see what's coming)
+  const cy = meXY ? 0.46 : 0.5;
+  const fitH = cv.height * 2 * Math.min(cy, 1 - cy);
   const box = (ps) => {
     let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
     for (const [x, y] of ps) { a = Math.min(a, x); b = Math.max(b, x); c = Math.min(c, y); d = Math.max(d, y); }
-    return { x0: a, x1: b, y0: c, y1: d, fit: Math.min(cv.width / (b - a + pad * 2), cv.height / (d - c + pad * 2)) };
+    return { x0: a, x1: b, y0: c, y1: d, fit: Math.min(cv.width / (b - a + pad * 2), fitH / (d - c + pad * 2)) };
   };
   const ov = G.ov || (G.ov = { all: true, n: 1, mon: true });
   const everyone = mon ? [...skiers, mon] : skiers;
@@ -554,18 +603,35 @@ function overviewCamera(dt) {
   }
   // ease toward the framing: zoom slowly, pan a bit quicker
   const tz = Math.max(minZ, Math.min(BASE_Z, bb.fit));
-  setZoom(spring('z', Z, tz, 1.8, dt));
+  setZoom(spring('z', Z, tz, meXY ? 3 : 1.8, dt)); // lobby groups spread fast; keep up
   let tx = (bb.x0 + bb.x1) / 2 - VW / 2;
-  const ty = (bb.y0 + bb.y1) / 2 - VH / 2;
+  // lobby: sit the group a little high so the host can see what's coming
+  const ty = (bb.y0 + bb.y1) / 2 - VH * cy;
   if (VW >= WORLD_W + 160) tx = (WORLD_W - VW) / 2;
   else tx = Math.max(-80, Math.min(WORLD_W - VW + 80, tx));
   panCamera(tx, ty, 2.6, dt);
+  // Lobby: the zoom eases out slower than a group can spread, so pin the
+  // host's own skier inside the part of the screen the lobby UI doesn't cover,
+  // no matter what the framing is doing.
+  if (meXY) {
+    // loosen at once, but tighten over a few frames so sliding sideways under
+    // the lobby window doesn't snap the camera
+    const want = clearBand((meXY[0] - G.camX) * Z / (cv.width / innerWidth));
+    const k = 1 - Math.exp(-dt * 6);
+    const band = G.band || (G.band = want.slice());
+    band[0] = want[0] < band[0] ? want[0] : band[0] + (want[0] - band[0]) * k;
+    band[1] = want[1] > band[1] ? want[1] : band[1] + (want[1] - band[1]) * k;
+    const top = meXY[1] - VH * band[1], bot = meXY[1] - VH * band[0];
+    if (G.camY < top || G.camY > bot) { G.camY = Math.max(top, Math.min(bot, G.camY)); if (G.vel) G.vel.y = G.tv ? G.tv.vy : 0; }
+    const left = meXY[0] - VW * 0.9, right = meXY[0] - VW * 0.1;
+    if (G.camX < left || G.camX > right) { G.camX = Math.max(left, Math.min(right, G.camX)); if (G.vel) G.vel.x = G.tv ? G.tv.vx : 0; }
+  }
   return true;
 }
 
 function updateCamera(dt) {
   if (overviewActive() && overviewCamera(dt)) return;
-  G.ov = null;
+  G.ov = null; G.band = null;
   if (Z !== BASE_Z) setZoom(Math.abs(Z - BASE_Z) < 0.01 ? BASE_Z : Z + (BASE_Z - Z) * (1 - Math.exp(-dt * 4)));
   let fx = WORLD_W / 2, fy = G.camY + VH * 0.32 + 40 * dt, follow = 'drift';
   const me = G.me;
@@ -583,7 +649,7 @@ function updateCamera(dt) {
   else tx = Math.max(-80, Math.min(WORLD_W - VW + 80, tx));
   // following your own skier stays snappy; spectating eases on a spring so it doesn't jerk around
   if (follow === 'other') { panCamera(tx, ty, 3, dt); return; }
-  G.vel = null;
+  G.vel = null; G.tv = null;
   G.camX += (tx - G.camX) * (1 - Math.pow(0.0005, dt));
   G.camY = follow === 'me' ? ty : G.camY + 50 * dt;
 }
